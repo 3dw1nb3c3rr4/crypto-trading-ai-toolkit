@@ -23,6 +23,8 @@ Windows sin Git: descarga el ZIP de la rama desde GitHub y descomprímelo. Si `t
 | `colab/descargar_velas_okx.ipynb`, `backtesting/download_okx_5m.py` | Descarga de velas 5m de OKX con ccxt (Colab o local), con reanudación |
 | `backtesting/ml_features.py`, `backtesting/ml_walkforward.py` | Modelo nuevo (gradient boosting) con walk-forward, control de etiquetas barajadas y prueba de señal plantada |
 | `backtesting/download_funding.py`, `backtesting/funding_carry.py`, `colab/celda_funding.py` | Descarga de funding y evaluación del carry delta-neutral con costos reales (resultado real pendiente de datos) |
+| `backtesting/selector.py`, `strategy_selection.json` | Selector: evalúa cada estrategia con una puerta estricta fuera de muestra y con costos; el bot solo opera las aprobadas (hoy: ninguna) |
+| `backtesting/trend_following.py` | Seguimiento de tendencia (Donchian + trailing), candidata evaluada por el selector |
 | `bots/master_trading_bot.py` | Bot de investigación: indicadores + (opcional) decisión real del Cerebro RL con velas 5m |
 | `bots/cerebro_rl/`, `bots/techosuelo/`, `bots/sesion_cerebro_db.py` | Copias de referencia del código original (no incluyen `trading_engine.py` ni los `main_*`, así que no se ejecutan solas) |
 | `models/` | `cerebro_rl.pt`, `techo_suelo_model.pt`, `meta_filtro_model.pkl` |
@@ -48,6 +50,13 @@ Modelo nuevo sobre velas 5m de OKX (genera `data/okx_5m.pkl` con `colab/celda_un
 python backtesting/ml_walkforward.py --variants dir12,dir48,xs12,xs48   # real
 python backtesting/ml_walkforward.py --shuffle                          # control nulo
 python backtesting/ml_walkforward.py --plant 6 --variants dir48         # prueba de sensibilidad
+```
+
+Selector de estrategias (re-ejecútalo cuando tengas más datos o estrategias nuevas):
+```bash
+python backtesting/selector.py                                    # evalúa todo y actualiza strategy_selection.json
+python backtesting/selector.py --funding funding_data.pkl --funding-key okx_funding --spot-key okx_spot_1h   # incluye el carry de funding
+python bots/test_master_bot.py                                    # tests del bot con selecciones fabricadas
 ```
 
 `sample_data.csv` es un dataset de ejemplo de 200 velas diarias; no representa un mercado real para evaluar rentabilidad.

@@ -117,6 +117,7 @@ def run_dir(data, syms, ts, X, y, H, shuffle, rng, n_tune=0):
             for (e, x, side, net, gross, reason) in simulate_symbol(data[s], sig, 10.0, 10.0, H, COSTS, start_idx=t0, end_idx=t1):
                 ftr.append((s, ts[e], ts[x], side, net, gross, reason))
         f = pd.DataFrame(ftr, columns=["symbol", "entry_ms", "exit_ms", "side", "net", "gross", "reason"])
+        f["fold"] = fi
         rows.append(dict(fold=fi, thr=thr, val_exp=val_exp, params=str(prm) if n_tune else "default", **summarize(f)))
         all_tr.append(f)
     return pd.concat(all_tr, ignore_index=True), pd.DataFrame(rows)
@@ -160,6 +161,7 @@ def run_xs(data, syms, ts, X, y, H, shuffle, rng, n_tune=0):
         val_exp, model, prm = best
         pt = np.stack([model.predict(X[s].iloc[t0:t1].to_numpy()) for s in syms], axis=1)
         f = pd.DataFrame(xs_periods(pt, t0, t1, H, c, o, ts), columns=["entry_ms", "gross", "net"])
+        f["fold"] = fi
         rows.append(dict(fold=fi, n=len(f), val_net=val_exp, gross=f.gross.mean(), net=f.net.mean(), win=(f.net > 0).mean(),
                          params=str(prm) if n_tune else "default"))
         per.append(f)

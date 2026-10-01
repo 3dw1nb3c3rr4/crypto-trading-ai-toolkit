@@ -27,3 +27,6 @@ En paper, el motor original registraba la entrada al `last_close` del escáner y
 - salida con slippage adverso de 0.02%.
 
 Aplicar a tu archivo local (detén el bot antes): `python aplicar_parche_paper.py` en la carpeta del bot. Crea `trading_engine.py.bak`, es idempotente y se niega a modificar un archivo que no coincida. Verificar con `python test_parche_paper.py trading_engine.py.bak`.
+
+## Selector de estrategias y bot
+`backtesting/selector.py` evalúa cada estrategia (indicadores, tendencia con trailing, Techo/Suelo, Cerebro RL, gradient boosting y, si hay datos, carry de funding) y guarda en `strategy_selection.json` cuáles pasan la puerta. `MasterTradingBot` solo emite señales de las estrategias aprobadas; si no hay ninguna responde HOLD. El modo investigación (`require_approval=False`) conserva la combinación de indicadores original, que no está validada. Estado actual: ninguna aprobada.

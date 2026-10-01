@@ -24,6 +24,7 @@ class Costs:
     fee_entry: float = FEE_TAKER
     fee_exit: float = FEE_TAKER
     slippage: float = SLIPPAGE
+    stop_slippage: float = 0.0010   # deslizamiento extra en salidas por stop: el precio suele atravesar el stop de un salto
     funding_per_day: float = 0.0   # >0 : longs pagan / shorts cobran
 
     def round_trip(self) -> float:
@@ -76,7 +77,7 @@ def simulate_symbol(df: pd.DataFrame, signal: np.ndarray, tp: float, sl: float,
             hit_sl = (lo <= sl_px) if side > 0 else (hi >= sl_px)
             hit_tp = (hi >= tp_px) if side > 0 else (lo <= tp_px)
             if hit_sl:                       # SL primero (conservador)
-                exit_px, reason, x = sl_px, "SL", j
+                exit_px, reason, x = sl_px * (1 - side * costs.stop_slippage), "SL", j
                 break
             if hit_tp:
                 exit_px, reason, x = tp_px, "TP", j

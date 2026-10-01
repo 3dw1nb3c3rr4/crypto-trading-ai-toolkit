@@ -110,6 +110,29 @@ Sin mejora real: la búsqueda no crea ventaja y el pequeño cambio en xs 4h es i
 - `ml_features.add_funding_features`: funding como característica del modelo, alineada sin mirar el futuro (0 filas mal alineadas en la prueba).
 - **Riesgo de liquidación del corto en el perp** (precios reales, ventanas de 30 días): a 1x 1.2% de las ventanas, 2x 4.8%, 3x 12.3%, 5x 26.9% suben lo suficiente para liquidar. Los altcoins pueden subir más de 100% en un mes; el carry tiene riesgo de cola real y conviene apalancamiento bajo y símbolos líquidos.
 
+## 8. Selector de estrategias: qué se evaluó y qué quedó aprobado
+
+`backtesting/selector.py` somete cada candidata a la misma puerta estricta y escribe `strategy_selection.json`, que lee el bot. Puerta (todas obligatorias): al menos 300 operaciones fuera de muestra; IC95% del neto (bootstrap por día) con límite inferior > 0; neto > 0 en todos los periodos de prueba; factor de beneficio ≥ 1.10; caída máxima de cartera no peor que -30%. Antes de la puerta se resta un **recorte de seguridad de 0.15% por trade**: con martingalas sintéticas (donde ninguna estrategia puede ganar) el motor mostró un optimismo residual de ~+0.15% por trade en salidas por stop, causado por asumir que el stop se ejecuta exactamente en su precio. Se añadió además 0.10% de deslizamiento extra en los stops.
+
+| Estrategia | Operaciones | Neto/trade* | IC95% inferior | pf | Veredicto |
+|---|---|---|---|---|---|
+| indicadores: RSI reversión | 2,156 | -0.33% | -1.25% | 0.92 | rechazada |
+| indicadores: Bollinger reversión | 5,829 | -0.36% | -0.73% | 0.82 | rechazada |
+| indicadores: Donchian breakout | 2,708 | -0.20% | -1.17% | 0.94 | rechazada |
+| indicadores: tendencia + pullback | 1,054 | -0.32% | -1.45% | 0.92 | rechazada |
+| indicadores: agotamiento | 1,762 | -0.84% | -1.71% | 0.78 | rechazada |
+| indicadores: momentum | 6,719 | -0.19% | -0.78% | 0.94 | rechazada |
+| **tendencia Donchian + trailing (nueva)** | 508 | **+1.33%** | -3.63% | 1.14 | rechazada |
+| modelo Techo/Suelo | 1,125 | -0.54% | -1.29% | 0.76 | rechazada |
+| modelo Cerebro RL (5m OKX) | 16,845 | -0.38% | -0.43% | 0.60 | rechazada |
+| gradient boosting (4 variantes, 5m OKX) | 3,866 a 29,035 | -0.29% a -0.33% | -0.30% a -0.42% | 0.07 a 0.58 | rechazadas |
+
+\* después del recorte de seguridad. **Estrategias aprobadas: ninguna.** El bot responde HOLD.
+
+Tendencia con trailing, el único caso con neto medio positivo: es el perfil típico de esta clase (mediana por trade -2.9%, 45% de aciertos) y la ganancia depende de pocas operaciones extremas. Los 10 mejores trades aportan el 106% de la ganancia total y sin ellos la media es -0.08%. Por periodo: +5.6% en el primero (caída de altcoins de fin de 2025, casi todo por cortos) y -0.2% / -0.9% en los otros dos. Con solo 2 años de datos no es una ventaja demostrable; conviene reevaluarla cuando haya más historia.
+
+Nota: las secciones 1 a 6 se calcularon con stops ejecutados exactamente en su precio; con el deslizamiento extra los resultados son ligeramente peores y las conclusiones no cambian.
+
 ## Limitaciones de este análisis
 
 Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos listados hoy (sesgo de supervivencia); sin funding ni profundidad del libro; los modelos pudieron entrenarse con parte de estos mismos datos.

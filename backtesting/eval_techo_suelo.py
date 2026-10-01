@@ -21,6 +21,28 @@ from engine import Costs, load_universe, portfolio_curve, summarize, trades_fram
 VAL_FRAC = 0.15
 
 
+def native_trades(tp=0.04, sl=0.04, hold=7):
+    """Trades del modelo Techo/Suelo (config nativa) en el tramo de validación, con costos. Devuelve DataFrame."""
+    uni = load_universe(os.path.join(ROOT, "data", "trading_history", "ohlcv_cache_2y.pkl"))
+    model, bundle = tm.load_bundle(os.path.join(ROOT, "models", "techo_suelo_model.pt"), device="cpu")
+    costs = Costs()
+    out = []
+    for sym, df in uni.items():
+        sc = mf.score_symbol_full_history(model, bundle, df, device="cpu")
+        if sc is None:
+            continue
+        sc = sc.set_index("ts")
+        p_t, p_s, p_n = sc["p_techo"], sc["p_suelo"], sc["p_neutral"]
+        side = pd.Series(0.0, index=sc.index)
+        side[(p_t > p_n) & (p_t >= p_s)] = -1.0
+        side[(p_s > p_n) & (p_s > p_t)] = 1.0
+        s = pd.Series(0.0, index=pd.DatetimeIndex(df["ts"]))
+        s.loc[side.index] = side.values
+        start = tm_cut(len(df))
+        out.append(trades_frame({sym: df}, {sym: s.to_numpy()}, tp, sl, hold, costs, start_ts=df["ts"].iloc[start]))
+    return pd.concat(out, ignore_index=True)
+
+
 def main():
     uni = load_universe(os.path.join(ROOT, "data", "trading_history", "ohlcv_cache_2y.pkl"))
     model, bundle = tm.load_bundle(os.path.join(ROOT, "models", "techo_suelo_model.pt"), device="cpu")
