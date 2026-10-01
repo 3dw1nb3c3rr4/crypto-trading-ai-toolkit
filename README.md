@@ -20,6 +20,7 @@ Windows sin Git: descarga el ZIP de la rama desde GitHub y descomprímelo. Si `t
 | `indicators.py`, `risk_management.py`, `sentiment.py` | SMA/EMA, RSI, MACD, Bollinger, ATR; tamaño de posición, R/R, max drawdown |
 | `backtesting/` | Motor con comisiones (taker 0.05% + slippage por lado), estrategias, optimización walk-forward, evaluación del modelo Techo/Suelo, backtest del Cerebro RL en 5m y descargador de velas |
 | `backtesting/REPORT.md` | Resultados y conclusiones de los backtests |
+| `colab/descargar_velas_okx.ipynb`, `backtesting/download_okx_5m.py` | Descarga de velas 5m de OKX con ccxt (Colab o local), con reanudación |
 | `bots/master_trading_bot.py` | Bot de investigación: indicadores + (opcional) decisión real del Cerebro RL con velas 5m |
 | `bots/cerebro_rl/`, `bots/techosuelo/`, `bots/sesion_cerebro_db.py` | Copias de referencia del código original (no incluyen `trading_engine.py` ni los `main_*`, así que no se ejecutan solas) |
 | `models/` | `cerebro_rl.pt`, `techo_suelo_model.pt`, `meta_filtro_model.pkl` |
