@@ -4,3 +4,4 @@ __pycache__/
 venv/
 .env
 backtest_results.*
+data/okx_5m.pkl

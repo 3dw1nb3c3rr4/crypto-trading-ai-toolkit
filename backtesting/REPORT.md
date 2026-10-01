@@ -40,8 +40,8 @@ Sensibilidad a comisiones (misma muestra OOS): sin costos +0.03%/trade; maker+ma
 ## 4. Cerebro RL
 
 - El checkpoint indica: modelo "Imitación pura" (imita al sistema JEV anterior), 37 features, velas de **5m**, TP=SL=1.5%, y `val_usd = -107.84` guardado en su validación.
-- No se pudo backtestear aquí: no hay velas de 5m en el repo y Binance no es accesible desde este entorno.
-- Listo para correr en tu PC: `download_5m.py` y luego `backtest_cerebro_rl_5m.py --data ohlcv_5m.pkl --oos-from <fecha posterior al entrenamiento>`. El script se probó solo con datos sintéticos (mecánica), no con datos reales.
+- Backtest con velas 5m reales de OKX: ver sección 6 (sin ventaja: retorno bruto ≈ 0).
+- Scripts: `download_okx_5m.py` / `colab/` para los datos y `backtest_cerebro_rl_5m.py --data <pkl> --oos-from <fecha>`.
 
 ## 5. Tus logs de operación (`data/trading_history/trades_*.csv`)
 
@@ -59,12 +59,33 @@ Hallazgos que conviene verificar antes de confiar en estos números:
 3. `prob_exito` del Meta Filtro: los trades con prob > 0.55 ganan 50-55% y pierden dinero; los de 0.40-0.55 son los rentables. La confianza del modelo no parece estar bien calibrada en vivo.
 4. El PnL de canasta es casi todo SHORT (+$75 vs LONG -$6): puede reflejar un mercado bajista en esas semanas, no una ventaja del modelo.
 
+## 6. Velas 5m de OKX (20 perpetuos, 365 días) y modelo nuevo
+
+Datos: 20 símbolos, 105,099 velas comunes (2025-10-01 a 2026-10-01), sin huecos ni anomalías (descargados con `colab/celda_unica.py`).
+
+**Cerebro RL actual:** año completo 31,914 trades, 49.6% de aciertos, retorno **bruto -0.003%**, neto -0.143%, pf 0.82 (puede incluir datos de su entrenamiento, es decir optimista). Solo después del 28-sep: 492 trades, neto -0.27%, pf 0.69. Sin ventaja: TP y SL se alcanzan prácticamente por igual (15,492 vs 15,512).
+
+**Modelo nuevo** (`ml_features.py`, `ml_walkforward.py`): gradient boosting con 47 características causales (retornos de 5m a 24h, volatilidad, velas, volumen, RSI, Bollinger, distancia a extremos, hora/día, contexto de BTC y del mercado, fuerza relativa y ranking entre símbolos). Entrenamiento expansivo, 4 periodos de prueba nunca vistos (días 150-365), purga de 2 días, costo 0.14% por operación. Las 4 variantes se fijaron antes de ver resultados:
+
+| Variante | Operaciones | Bruto | Neto | IC95% neto (por día) | Cartera |
+|---|---|---|---|---|---|
+| direccional 1h | 29,035 | -0.011% | -0.151% | [-0.181%, -0.123%] | -75.6% |
+| direccional 4h | 10,818 | -0.037% | -0.177% | [-0.263%, -0.094%] | -40.9% |
+| long/short cross-sectional 1h | 15,472 periodos | -0.001% | -0.141% | [-0.148%, -0.135%] | n/a |
+| long/short cross-sectional 4h | 3,866 periodos | -0.009% | -0.149% | [-0.172%, -0.126%] | n/a |
+
+Controles de validez:
+- **Etiquetas barajadas** (no puede haber ventaja): bruto -0.002% (1h), -0.034% (4h), -0.017% (xs 4h). Igual que el modelo real: no aprendió nada predictivo.
+- **Señal plantada** (feature con correlación ≈ 0.16 con el retorno futuro a 4h): el mismo código gana +0.10% neto por trade (IC95% [+0.03%, +0.17%]) y +58% en cartera con caída máxima -9.8%. Es decir, la canalización sí detecta una ventaja de ese tamaño; su ausencia en datos reales es creíble.
+
+**Conclusión:** con velas OHLCV de 5m y características de mercado, en 20 perpetuos líquidos, no hay ventaja predictiva a 1h/4h antes de comisiones. Cambiar a un modelo más complejo (RL, redes) no lo arregla: el límite es la información, no el modelo. Lo que sí podría tener ventaja y no se ha probado: datos distintos (funding, open interest, libro de órdenes, liquidaciones) o estrategias estructurales que no dependen de predecir dirección (p. ej. carry de funding delta-neutral).
+
 ## Limitaciones de este análisis
 
 Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos listados hoy (sesgo de supervivencia); sin funding ni profundidad del libro; los modelos pudieron entrenarse con parte de estos mismos datos.
 
 ## Siguientes pasos recomendados
 
-1. Backtest del Cerebro RL con 5m reales (scripts listos) y solo en fechas posteriores a su entrenamiento.
+1. Probar fuentes de información nuevas (funding, open interest, libro de órdenes) o carry de funding; con solo OHLCV ya no hay más que explorar (sección 6).
 2. Verificar si los logs de canasta/pirámide son paper o real. Si son paper, repetir con rellenos al bid/ask, taker en ambos lados y latencia, o con nocional mínimo en real durante 2-4 semanas.
 3. No operar con dinero real una estrategia hasta que tenga expectativa neta positiva fuera de muestra en al menos 3 periodos y más de ~300 trades.
