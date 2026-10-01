@@ -59,6 +59,17 @@ Hallazgos que conviene verificar antes de confiar en estos números:
 3. `prob_exito` del Meta Filtro: los trades con prob > 0.55 ganan 50-55% y pierden dinero; los de 0.40-0.55 son los rentables. La confianza del modelo no parece estar bien calibrada en vivo.
 4. El PnL de canasta es casi todo SHORT (+$75 vs LONG -$6): puede reflejar un mercado bajista en esas semanas, no una ventaja del modelo.
 
+**Confirmado por el usuario: ambos logs son de paper trading.** Separando los cierres instantáneos (menos de 10 s):
+
+| | Cierres < 10 s | PnL de esos | Resto de trades | PnL del resto | Neto medio del resto |
+|---|---|---|---|---|---|
+| Canasta | 264 de 1035 (26%) | +$95.16 | 771 | **-$25.90** | -0.072% por trade |
+| Pirámide | 152 de 275 (55%) | +$187.84 | 123 | +$6.60 | +0.106% por trade (muestra pequeña) |
+
+- Casi todos los cierres instantáneos son TP, en LONG y en SHORT (canasta: 252 de 264; pirámide: 145 de 152). Eso apunta a un sesgo del paper a favor del TP, no a un mercado bajista.
+- Causa probable (no demostrada): en paper, `trading_engine.py` registra la entrada al `last_close` del escáner (líneas ~624 y ~975) y revisa el TP/SL contra el precio en vivo de `fetch_ticker`; si el precio ya se movió desde ese cierre, la posición cierra al instante. En modo real la entrada viene del fill verdadero, así que ese efecto no existe.
+- Sin los cierres instantáneos, el rendimiento de canasta es negativo y el de pirámide es pequeño y no concluyente. Los $69 y $194 de ganancia "en paper" no son evidencia de rentabilidad real.
+
 ## 6. Velas 5m de OKX (20 perpetuos, 365 días) y modelo nuevo
 
 Datos: 20 símbolos, 105,099 velas comunes (2025-10-01 a 2026-10-01), sin huecos ni anomalías (descargados con `colab/celda_unica.py`).
