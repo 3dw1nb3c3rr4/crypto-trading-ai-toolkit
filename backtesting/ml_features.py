@@ -91,3 +91,33 @@ def build_dataset(data: dict, syms: list[str], ts: np.ndarray, horizons=(12, 48)
             out[: len(c) - H - 1] = c[H: len(c) - 1] / o[1: len(c) - H] - 1.0   # salida en close[t+H], entrada open[t+1]
             y[(s, H)] = out
     return X, y
+
+
+def add_funding_features(X: dict, syms: list[str], ts: np.ndarray, funding: dict) -> None:
+    """Agrega features de funding in-place. Alineación 'as-of': solo liquidaciones con ts <= cierre de la vela (sin futuro)."""
+    key = pd.DataFrame({"ts": ts.astype("int64") + 300_000})
+    cols = {}
+    for s in syms:
+        f = funding.get(s)
+        if f is None or len(f) < 40:
+            continue
+        f = f.sort_values("ts")[["ts", "rate"]].reset_index(drop=True)
+        f["fund_m3"] = f["rate"].rolling(3).mean()
+        f["fund_m9"] = f["rate"].rolling(9).mean()
+        f["fund_z30"] = (f["rate"] - f["rate"].rolling(30).mean()) / (f["rate"].rolling(30).std() + 1e-12)
+        f["fund_chg"] = f["rate"].diff()
+        m = pd.merge_asof(key, f.rename(columns={"rate": "fund_last"}), on="ts", direction="backward")
+        cols[s] = m[["fund_last", "fund_m3", "fund_m9", "fund_z30", "fund_chg"]].astype("float32")
+    if not cols:
+        raise ValueError("el archivo de funding no tiene símbolos utilizables")
+    wide_last = pd.DataFrame({s: cols[s]["fund_last"].to_numpy() for s in cols})
+    rank = wide_last.rank(axis=1, pct=True)
+    mkt = wide_last.mean(axis=1).to_numpy().astype("float32")
+    to_next = ((8 * 3600_000 - (ts.astype("int64") + 300_000) % (8 * 3600_000)) / 3600_000).astype("float32")
+    for s in syms:
+        if s in cols:
+            for c in cols[s].columns:
+                X[s][c] = cols[s][c].to_numpy()
+            X[s]["fund_rank"] = rank[s].to_numpy().astype("float32")
+        X[s]["fund_mkt"] = mkt
+        X[s]["fund_hrs_to_next"] = to_next

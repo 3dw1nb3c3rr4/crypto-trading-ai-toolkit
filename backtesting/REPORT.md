@@ -80,6 +80,24 @@ Controles de validez:
 
 **Conclusión:** con velas OHLCV de 5m y características de mercado, en 20 perpetuos líquidos, no hay ventaja predictiva a 1h/4h antes de comisiones. Cambiar a un modelo más complejo (RL, redes) no lo arregla: el límite es la información, no el modelo. Lo que sí podría tener ventaja y no se ha probado: datos distintos (funding, open interest, libro de órdenes, liquidaciones) o estrategias estructurales que no dependen de predecir dirección (p. ej. carry de funding delta-neutral).
 
+### 6b. Búsqueda automática de hiperparámetros (12 configuraciones por fold, elegidas solo con la ventana de validación)
+
+| Variante | Neto sin búsqueda | Neto con búsqueda | Control barajado + búsqueda |
+|---|---|---|---|
+| direccional 1h | -0.151% | -0.149% | n/d |
+| direccional 4h | -0.177% | -0.186% | -0.176% |
+| cross-sectional 1h | -0.141% | -0.141% | n/d |
+| cross-sectional 4h | -0.149% | -0.136% | -0.132% |
+
+Sin mejora real: la búsqueda no crea ventaja y el pequeño cambio en xs 4h es igual al del control barajado (ruido). Como la elección usa solo validación, el resultado en prueba sigue siendo limpio.
+
+## 7. Carry de funding delta-neutral (herramientas listas; resultado real pendiente de datos)
+
+- `download_funding.py` y `colab/celda_funding.py`: bajan funding (OKX solo entrega ~3 meses; Binance todo el año pero bloquea EE.UU.) y velas spot 1h de OKX. Probados con exchanges simulados, no con APIs reales.
+- `funding_carry.py`: P&L = funding cobrado + base spot-perp - costos (0.19% por entrada y por salida, ambas patas), con grilla de 36 configuraciones, walk-forward y chequeo de liquidación. Autotest con casos de respuesta conocida: costo exacto, funding acumulado coincide con lo esperado.
+- `ml_features.add_funding_features`: funding como característica del modelo, alineada sin mirar el futuro (0 filas mal alineadas en la prueba).
+- **Riesgo de liquidación del corto en el perp** (precios reales, ventanas de 30 días): a 1x 1.2% de las ventanas, 2x 4.8%, 3x 12.3%, 5x 26.9% suben lo suficiente para liquidar. Los altcoins pueden subir más de 100% en un mes; el carry tiene riesgo de cola real y conviene apalancamiento bajo y símbolos líquidos.
+
 ## Limitaciones de este análisis
 
 Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos listados hoy (sesgo de supervivencia); sin funding ni profundidad del libro; los modelos pudieron entrenarse con parte de estos mismos datos.
