@@ -50,7 +50,7 @@ def main():
     cfgs = [(k, tp, sl, h) for k in SIGNALS for tp, sl, h in
             itertools.product(EXIT_GRID["tp"], EXIT_GRID["sl"], EXIT_GRID["hold"])]
     print(f"universo={len(UNIVERSE)} símbolos | configuraciones={len(cfgs)} | CPU={mp.cpu_count()}", flush=True)
-    with mp.Pool(min(mp.cpu_count(), 8)) as pool:
+    with mp.Pool(min(mp.cpu_count(), 8), initializer=build_signals) as pool:
         results = pool.map(run_cfg, cfgs, chunksize=8)
     all_tr = {r[0]: r[1] for r in results}
     print(f"simulación completa en {time.time()-t0:.0f}s", flush=True)
