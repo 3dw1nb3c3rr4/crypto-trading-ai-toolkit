@@ -16,7 +16,14 @@ Resumen verificado contra el código y los checkpoints. Para el rendimiento medi
 - `sesion_cerebro_db.py`: guarda/carga la sesión en SQLite (`guardar_sesion`, `cargar_sesion`, `borrar_sesion_y_archivos`).
 
 ## Qué falta para ejecutarlos desde este repo
-Las copias no incluyen `trading_engine.py` (motor paper/real, modos canasta y pirámide) ni los `main_*`; la versión ejecutable es la carpeta original. Los modelos se buscan en la misma carpeta que los scripts.
+`bots/techosuelo/trading_engine.py` (motor paper/real, modos canasta y pirámide) ya incluye el parche del modo paper (ver abajo); los `main_*` no están incluidos y la versión ejecutable sigue siendo la carpeta original. Los modelos se buscan en la misma carpeta que los scripts.
 
 ## Master Trading Bot (`bots/master_trading_bot.py`)
 Combina puntuaciones de SMA, Bollinger, RSI y MACD y, si se le pasan velas 5m, la decisión real del Cerebro RL (si discrepan, no opera). Es una herramienta de investigación: la combinación no está validada.
+
+## Parche del modo paper (`bots/techosuelo/aplicar_parche_paper.py`)
+En paper, el motor original registraba la entrada al `last_close` del escáner y evaluaba TP/SL contra el precio en vivo, así que muchas posiciones cerraban al instante con ganancia falsa (ver `backtesting/REPORT.md`, sección 5). El parche (solo paper, no toca el modo real):
+- entrada al precio en vivo: ask (+0.02%) para LONG, bid (-0.02%) para SHORT; si no hay precio en vivo, no abre;
+- salida con slippage adverso de 0.02%.
+
+Aplicar a tu archivo local (detén el bot antes): `python aplicar_parche_paper.py` en la carpeta del bot. Crea `trading_engine.py.bak`, es idempotente y se niega a modificar un archivo que no coincida. Verificar con `python test_parche_paper.py trading_engine.py.bak`.

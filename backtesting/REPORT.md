@@ -68,6 +68,7 @@ Hallazgos que conviene verificar antes de confiar en estos números:
 
 - Casi todos los cierres instantáneos son TP, en LONG y en SHORT (canasta: 252 de 264; pirámide: 145 de 152). Eso apunta a un sesgo del paper a favor del TP, no a un mercado bajista.
 - Causa probable (no demostrada): en paper, `trading_engine.py` registra la entrada al `last_close` del escáner (líneas ~624 y ~975) y revisa el TP/SL contra el precio en vivo de `fetch_ticker`; si el precio ya se movió desde ese cierre, la posición cierra al instante. En modo real la entrada viene del fill verdadero, así que ese efecto no existe.
+- Reproducido con un exchange simulado: el motor original cierra al instante con TP falso (+$0.42 sobre $30) cuando el precio en vivo ya se movió desde el `last_close`; el parche `bots/techosuelo/aplicar_parche_paper.py` lo corrige (ver BOTS.md). Los logs paper anteriores quedan contaminados y conviene rehacerlos con el motor parchado.
 - Sin los cierres instantáneos, el rendimiento de canasta es negativo y el de pirámide es pequeño y no concluyente. Los $69 y $194 de ganancia "en paper" no son evidencia de rentabilidad real.
 
 ## 6. Velas 5m de OKX (20 perpetuos, 365 días) y modelo nuevo
