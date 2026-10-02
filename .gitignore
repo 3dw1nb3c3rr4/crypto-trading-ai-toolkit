@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+backtest_results.*
+data/okx_5m.pkl
