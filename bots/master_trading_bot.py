@@ -55,6 +55,10 @@ class MasterTradingBot:
     def approved_strategies(self) -> list[str]:
         return [s["name"] for s in self.selection.get("strategies", []) if s.get("enabled")]
 
+    def watchlist_strategies(self) -> list[str]:
+        """Estrategias que pasaron la prueba principal pero no la de robustez: solo para paper trading, nunca dinero real."""
+        return list(self.selection.get("watchlist", []))
+
     def approved_signals(self, df: pd.DataFrame) -> list[dict]:
         """Señales de la última vela diaria SOLO de las estrategias aprobadas. df: OHLC diario con columnas open/high/low/close."""
         out = []
@@ -135,6 +139,7 @@ class MasterTradingBot:
             appr = self.approved_signals(df)
             if not self.approved_strategies():
                 return {"signal": "HOLD", "approved": [], "reason": "ninguna estrategia aprobada por el selector (ejecuta backtesting/selector.py)",
+                        "watchlist": self.watchlist_strategies(),
                         "selection_generated": self.selection.get("generated"), "timestamp": datetime.now(timezone.utc).isoformat()}
             return {"signal": "APPROVED", "approved": appr, "selection_generated": self.selection.get("generated"),
                     "timestamp": datetime.now(timezone.utc).isoformat()}
@@ -165,7 +170,7 @@ if __name__ == "__main__":
     bot = MasterTradingBot()
     enriched = bot.calculate_indicators(data)
     sig = bot.generate_signal(enriched)
-    print("estrategias aprobadas:", bot.approved_strategies() or "NINGUNA")
+    print("estrategias aprobadas:", bot.approved_strategies() or "NINGUNA", "| en observación (solo paper):", bot.watchlist_strategies() or "ninguna")
     print(sig["signal"], "-", sig.get("reason", sig.get("approved")))
     research = MasterTradingBot(use_cerebro_rl=False, require_approval=False).generate_signal(enriched)
     print("modo investigación (NO validado):", research["signal"], f"score={research['technical_score']:+.2f}")

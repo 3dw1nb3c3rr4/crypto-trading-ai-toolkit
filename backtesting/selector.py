@@ -13,7 +13,7 @@ Puerta (todas obligatorias):
 Resultado: strategy_selection.json (lo lee el bot). Si ninguna pasa, el bot no opera.
 
 Uso: python selector.py [--data ../data/okx_5m.pkl] [--funding funding_data.pkl --funding-key okx_funding --spot-key okx_spot_1h]
-                        [--skip familias,tendencia,techosuelo,cerebro,ml,carry]
+                        [--skip familias,tendencia,techosuelo,cerebro,ml,xsdiario,carry]
 """
 from __future__ import annotations
 
@@ -229,6 +229,32 @@ def eval_ml(path):
     return out
 
 
+def eval_daily_xs(data=None):
+    """Modelo cross-sectional diario (117 símbolos, H=7d, gradient boosting) + batería de robustez FIJA:
+    universo estable (sin listados nuevos), 50% más líquido y costo doble. Para aprobarse debe mantener IC95% > 0 en todas."""
+    import ml_daily_xs as dx
+    kw = dict(H=7, model="gbm", data=data or dx.DATA)
+    base_rt = Costs().round_trip()
+
+    def ev_from(df, name, notes):
+        tr = df.rename(columns={"entry_ts": "entry_ts"})[["entry_ts", "fold", "net"]].copy()
+        tr["entry_ts"] = pd.to_datetime(tr["entry_ts"], utc=True)
+        return make_evidence(name, tr, notes=notes)
+
+    base = ev_from(dx.evaluate_variant(**kw), "modelo:xs_diario_gbm_7d", "117 perpetuos, diario, long/short K=10, carteras superpuestas de 7 días")
+    variants = {
+        "universo_estable": dx.evaluate_variant(stable=True, **kw),
+        "50%_mas_liquido": dx.evaluate_variant(liq=0.5, **kw),
+        "costo_doble": dx.evaluate_variant(rt=2 * base_rt, **kw),
+    }
+    dx.RT = base_rt
+    base["robustness"] = []
+    for k, df in variants.items():
+        e = ev_from(df, k, "")
+        base["robustness"].append(dict(name=k, exp_net=e["exp_net"], ci_lo=e["ci_lo"], ci_hi=e["ci_hi"], n=e["n"]))
+    return [base]
+
+
 def eval_carry(funding_path, key, spot_key):
     import funding_carry as fc
     funding, prices, spot = fc.load_inputs(funding_path, key, os.path.join(ROOT, "data", "okx_5m.pkl"), spot_key)
@@ -266,6 +292,7 @@ def eval_carry(funding_path, key, spot_key):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=os.path.join(ROOT, "data", "okx_5m.pkl"))
+    ap.add_argument("--daily-data", default=None, help="pickle diario largo para el modelo cross-sectional (colab/celda_historia_diaria.py)")
     ap.add_argument("--funding", default=None)
     ap.add_argument("--funding-key", default=None)
     ap.add_argument("--spot-key", default=None)
@@ -274,7 +301,7 @@ def main():
     a = ap.parse_args()
     skip = set(x for x in a.skip.split(",") if x)
     jobs = [("familias", eval_familias), ("tendencia", eval_tendencia), ("techosuelo", eval_techosuelo),
-            ("cerebro", lambda: eval_cerebro(a.data)), ("ml", lambda: eval_ml(a.data))]
+            ("cerebro", lambda: eval_cerebro(a.data)), ("ml", lambda: eval_ml(a.data)), ("xsdiario", lambda: eval_daily_xs(a.daily_data))]
     if a.funding:
         jobs.append(("carry", lambda: eval_carry(a.funding, a.funding_key, a.spot_key)))
     results, t0 = [], time.time()
@@ -290,18 +317,29 @@ def main():
     rows = []
     for ev in results:
         ok, why = (False, [ev["notes"]]) if ev["kind"] == "error" else gate(ev, dict(GATE, min_trades=90) if ev["kind"] == "carry" else GATE)
+        ev["status"] = "aprobada" if ok else "rechazada"
+        if ok and ev.get("robustness"):
+            fails = [r["name"] for r in ev["robustness"] if not (r["ci_lo"] > 0)]
+            if fails:       # pasa la prueba principal pero no la batería de robustez: solo observación / paper
+                ev["status"], ok = "en_observacion", False
+                why = [f"no mantiene IC95% > 0 en: {', '.join(fails)}"]
         ev["enabled"], ev["reasons"] = bool(ok), why
         rows.append(ev)
     print(f"\n{'estrategia':40s} {'n':>6s} {'neto/trade*':>11s} {'IC95% inferior':>14s} {'pf':>5s}  veredicto")
     for ev in rows:
         print(f"{ev['name']:40s} {ev['n']:6d} {ev['exp_net']:+11.3%} {ev['ci_lo']:+14.3%} {ev['pf']:5.2f}  "
-              f"{'APROBADA' if ev['enabled'] else 'rechazada'}")
+              f"{ev['status'].upper() if ev['status'] != 'rechazada' else 'rechazada'}")
         for r in ev["reasons"][:3]:
             print(f"{'':42s}- {r}")
+        for r in ev.get("robustness", []):
+            print(f"{'':42s}  robustez {r['name']:18s} neto {r['exp_net']:+.3%}  IC95% [{r['ci_lo']:+.3%}, {r['ci_hi']:+.3%}]")
     print(f"\n* neto por trade DESPUÉS del recorte de seguridad de {HAIRCUT:.2%}; costo base ida/vuelta {Costs().round_trip():.2%} + stop {Costs().stop_slippage:.2%}")
     enabled = [e["name"] for e in rows if e["enabled"]]
+    watch = [e["name"] for e in rows if e["status"] == "en_observacion"]
     print("ESTRATEGIAS APROBADAS:", enabled or "NINGUNA -> el bot no debe operar")
-    payload = dict(generated=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), gate=GATE, haircut=HAIRCUT, enabled=enabled, strategies=rows)
+    if watch:
+        print("EN OBSERVACION (solo paper, no dinero real):", watch)
+    payload = dict(generated=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), gate=GATE, haircut=HAIRCUT, enabled=enabled, watchlist=watch, strategies=rows)
     json.dump(payload, open(a.out, "w"), indent=1, default=lambda o: None if o != o else str(o))
     print("guardado", a.out)
 

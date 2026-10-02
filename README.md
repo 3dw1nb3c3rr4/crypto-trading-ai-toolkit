@@ -24,6 +24,7 @@ Windows sin Git: descarga el ZIP de la rama desde GitHub y descomprímelo. Si `t
 | `backtesting/ml_features.py`, `backtesting/ml_walkforward.py` | Modelo nuevo (gradient boosting) con walk-forward, control de etiquetas barajadas y prueba de señal plantada |
 | `backtesting/download_funding.py`, `backtesting/funding_carry.py`, `colab/celda_funding.py` | Descarga de funding y evaluación del carry delta-neutral con costos reales (resultado real pendiente de datos) |
 | `backtesting/selector.py`, `strategy_selection.json` | Selector: evalúa cada estrategia con una puerta estricta fuera de muestra y con costos; el bot solo opera las aprobadas (hoy: ninguna) |
+| `backtesting/ml_daily_xs.py`, `colab/celda_historia_diaria.py` | Modelo cross-sectional diario (117 símbolos) y descarga de ~6 años de velas diarias para confirmarlo; hoy "en observación" |
 | `backtesting/trend_following.py` | Seguimiento de tendencia (Donchian + trailing), candidata evaluada por el selector |
 | `bots/master_trading_bot.py` | Bot de investigación: indicadores + (opcional) decisión real del Cerebro RL con velas 5m |
 | `bots/cerebro_rl/`, `bots/techosuelo/`, `bots/sesion_cerebro_db.py` | Copias de referencia del código original (no incluyen `trading_engine.py` ni los `main_*`, así que no se ejecutan solas) |
@@ -56,6 +57,7 @@ Selector de estrategias (re-ejecútalo cuando tengas más datos o estrategias nu
 ```bash
 python backtesting/selector.py                                    # evalúa todo y actualiza strategy_selection.json
 python backtesting/selector.py --funding funding_data.pkl --funding-key okx_funding --spot-key okx_spot_1h   # incluye el carry de funding
+python backtesting/ml_daily_xs.py                                 # modelo diario (--shuffle / --plant 6 / --stable / --liq 0.5 / --data <pkl largo>)
 python bots/test_master_bot.py                                    # tests del bot con selecciones fabricadas
 ```
 

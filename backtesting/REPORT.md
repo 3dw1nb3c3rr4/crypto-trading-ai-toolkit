@@ -133,6 +133,36 @@ Tendencia con trailing, el único caso con neto medio positivo: es el perfil tí
 
 Nota: las secciones 1 a 6 se calcularon con stops ejecutados exactamente en su precio; con el deslizamiento extra los resultados son ligeramente peores y las conclusiones no cambian.
 
+## 9. Búsqueda de ventaja: modelo cross-sectional diario sobre 117 perpetuos
+
+Primera señal que supera la prueba principal. `ml_daily_xs.py`: gradient boosting con 33 características diarias (retornos, volatilidad, volumen/liquidez, distancia a extremos, velas, mercado, rankings), walk-forward con 5 periodos de prueba y purga, long los 10 mejores / short los 10 peores por cohorte de 7 días, costo 0.14% por cohorte sobre todo el nocional.
+
+| Variante (4 fijadas de antemano) | Neto por cohorte | IC95% | Sharpe anual |
+|---|---|---|---|
+| 3 días, gradient boosting | +0.10% | [-0.17%, +0.39%] | 0.46 |
+| 3 días, ridge | +0.01% | [-0.23%, +0.27%] | 0.06 |
+| **7 días, gradient boosting** | **+0.81%** | **[+0.29%, +1.41%]** | **1.74** |
+| 7 días, ridge | +0.42% | [-0.08%, +0.94%] | 1.02 |
+
+La variante de 7 días con gradient boosting es positiva en los 5 periodos (+0.45%, +1.36%, +0.67%, +0.19%, +1.63%).
+
+Controles: etiquetas barajadas -0.22% (sin ventaja); señal plantada +2.47% (se detecta). Quitar un grupo de información a la vez deja +0.61% a +0.96%: la señal no depende de un solo tipo de dato.
+
+**Pero es frágil en el universo**, y por eso queda "en observación" y no aprobada:
+
+| Variante de robustez | Neto | IC95% |
+|---|---|---|
+| universo estable (solo símbolos con historia completa) | +0.06% | [-0.25%, +0.34%] |
+| 50% más líquido | +0.25% | [-0.05%, +0.55%] |
+| costo doble | +0.52% | [+0.21%, +0.84%] |
+
+Hallazgos que explican la cautela:
+- La ganancia viene sobre todo de la pata corta: los shorts elegidos cayeron -2.48% por semana contra -0.93% de la moneda promedio. Todo el periodo de prueba fue una caída fuerte de altcoins.
+- El universo (117 símbolos) se eligió con el ranking de volumen y volatilidad de hoy: sesgo de supervivencia. Una parte de la ventaja desaparece al quitar monedas nuevas o menos líquidas, que son justo las más caras de operar de verdad (el costo de 0.14% probablemente está subestimado para ellas).
+- Solo hay un ciclo de mercado.
+
+Estado en el selector: **EN OBSERVACIÓN** (solo paper). Para confirmarla o descartarla hace falta más historia con otros regímenes (`colab/celda_historia_diaria.py`, ~6 años) y luego `python backtesting/ml_daily_xs.py --data <archivo>` y el selector con `--daily-data`.
+
 ## Limitaciones de este análisis
 
 Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos listados hoy (sesgo de supervivencia); sin funding ni profundidad del libro; los modelos pudieron entrenarse con parte de estos mismos datos.

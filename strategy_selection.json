@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-01T22:05:53Z",
+ "generated": "2026-10-02T00:15:04Z",
  "gate": {
   "min_trades": 300,
   "min_pf": 1.1,
@@ -9,6 +9,9 @@
  },
  "haircut": 0.0015,
  "enabled": [],
+ "watchlist": [
+  "modelo:xs_diario_gbm_7d"
+ ],
  "strategies": [
   {
    "name": "indicadores:rsi_reversion",
@@ -44,6 +47,7 @@
     "ultima_config": "rsi_reversion#1|tp0.12|sl0.06|h14"
    },
    "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-1.250%, +0.628%]",
@@ -86,6 +90,7 @@
     "ultima_config": "bollinger_reversion#0|tp0.12|sl0.02|h14"
    },
    "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-0.730%, +0.028%]",
@@ -128,6 +133,7 @@
     "ultima_config": "donchian_breakout#0|tp0.12|sl0.04|h7"
    },
    "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-1.174%, +0.905%]",
@@ -170,6 +176,7 @@
     "ultima_config": "trend_pullback#2|tp0.12|sl0.06|h14"
    },
    "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-1.446%, +0.847%]",
@@ -212,6 +219,7 @@
     "ultima_config": "exhaustion_reversal#2|tp0.12|sl0.06|h3"
    },
    "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-1.708%, +0.077%]",
@@ -254,6 +262,7 @@
     "ultima_config": "momentum#1|tp0.12|sl0.06|h7"
    },
    "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-0.782%, +0.434%]",
@@ -295,6 +304,7 @@
     "ultima_config": "N55|X20|ATR3.0"
    },
    "notes": "Donchian + stop ATR + salida trailing, sin take profit; walk-forward",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-3.630%, +5.663%]",
@@ -332,6 +342,7 @@
    "port_dd": -0.27346599065606175,
    "config": null,
    "notes": "config nativa TP4/SL4/7d en el tramo de validaci\u00f3n",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-1.288%, +0.163%]",
@@ -375,6 +386,7 @@
    "port_dd": -0.8675509469189069,
    "config": null,
    "notes": "velas 5m OKX, TP=SL=1.5%, 4 periodos de prueba",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-0.430%, -0.333%]",
@@ -419,6 +431,7 @@
    "port_dd": -0.9407176571500421,
    "config": null,
    "notes": "walk-forward con purga, 5m OKX",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-0.331%, -0.273%]",
@@ -463,6 +476,7 @@
    "port_dd": -0.6365431995265102,
    "config": null,
    "notes": "walk-forward con purga, 5m OKX",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-0.415%, -0.244%]",
@@ -507,6 +521,7 @@
    "port_dd": null,
    "config": null,
    "notes": "walk-forward con purga, 5m OKX",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-0.300%, -0.286%]",
@@ -550,11 +565,82 @@
    "port_dd": null,
    "config": null,
    "notes": "walk-forward con purga, 5m OKX",
+   "status": "rechazada",
    "enabled": false,
    "reasons": [
     "IC95% del neto incluye cero o es negativo [-0.349%, -0.291%]",
     "neto <= 0 en el/los periodo(s) [1, 2, 3, 4]",
     "factor de beneficio 0.21 < 1.1"
+   ]
+  },
+  {
+   "name": "modelo:xs_diario_gbm_7d",
+   "kind": "trades",
+   "n": 421,
+   "exp_net": 0.006568224772547638,
+   "exp_net_raw": 0.00806822477254764,
+   "ci_lo": 0.0034538941790223645,
+   "ci_hi": 0.009771577593601345,
+   "pf": 1.7103568603744272,
+   "win": 0.5510688836104513,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 90,
+     "exp_net": 0.0029715255326552862
+    },
+    {
+     "fold": 2,
+     "n": 90,
+     "exp_net": 0.012071543429046412
+    },
+    {
+     "fold": 3,
+     "n": 90,
+     "exp_net": 0.005182369015039817
+    },
+    {
+     "fold": 4,
+     "n": 90,
+     "exp_net": 0.00044083417009589817
+    },
+    {
+     "fold": 5,
+     "n": 61,
+     "exp_net": 0.014840297311921118
+    }
+   ],
+   "port_ret": null,
+   "port_dd": null,
+   "config": null,
+   "notes": "117 perpetuos, diario, long/short K=10, carteras superpuestas de 7 d\u00edas",
+   "robustness": [
+    {
+     "name": "universo_estable",
+     "exp_net": 0.0005675282327560327,
+     "ci_lo": -0.0024821370468731214,
+     "ci_hi": 0.0034301067295612977,
+     "n": 421
+    },
+    {
+     "name": "50%_mas_liquido",
+     "exp_net": 0.0025203213862729176,
+     "ci_lo": -0.0004761129086010551,
+     "ci_hi": 0.005481241993264094,
+     "n": 421
+    },
+    {
+     "name": "costo_doble",
+     "exp_net": 0.005168224772547638,
+     "ci_lo": 0.002053894179022365,
+     "ci_hi": 0.008371577593601343,
+     "n": 421
+    }
+   ],
+   "status": "en_observacion",
+   "enabled": false,
+   "reasons": [
+    "no mantiene IC95% > 0 en: universo_estable, 50%_mas_liquido"
    ]
   }
  ]
