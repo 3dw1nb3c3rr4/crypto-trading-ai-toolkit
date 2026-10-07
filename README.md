@@ -29,6 +29,7 @@ Windows sin Git: descarga el ZIP de la rama desde GitHub y descomprímelo. Si `t
 | `bots/xs_daily/` | Bot nuevo cross-sectional diario, SOLO paper (entrenar, ejecutar a diario, simulación de prueba) |
 | `backtesting/download_derivs.py`, `download_binance_metrics.py`, `derivs_features.py`, `funding_arb.py`, `universe_symbols.txt` | Funding y open interest: descarga, características sin fuga de información, arbitraje de funding (Hummingbot) y carry; resultado real pendiente de datos |
 | `colab/celda_derivados.py` | Celda única de Colab: funding y open interest de OKX (API) y de Binance (archivos públicos), con reporte de cobertura |
+| `backtesting/kronos_features.py`, `colab/celda_kronos.py` | Pronósticos del modelo fundacional Kronos (shiyu-coder/Kronos) como características (variante K = E + Kronos); pipeline probado con un predictor simulado, **sin probar aún con los pesos reales** |
 | `backtesting/trend_following.py` | Seguimiento de tendencia (Donchian + trailing), candidata evaluada por el selector |
 | `bots/master_trading_bot.py` | Bot de investigación: indicadores + (opcional) decisión real del Cerebro RL con velas 5m |
 | `bots/cerebro_rl/`, `bots/techosuelo/`, `bots/sesion_cerebro_db.py` | Copias de referencia del código original (no incluyen `trading_engine.py` ni los `main_*`, así que no se ejecutan solas) |
@@ -69,6 +70,8 @@ python bots/xs_daily/test_paper_sim.py                            # simulación 
 python backtesting/test_derivs_features.py                        # pruebas anti-fuga de funding/OI
 python backtesting/funding_arb.py --selftest                      # autotest del arbitraje de funding
 python backtesting/ml_daily_xs_v2.py --derivs derivs_*.pkl --variants E,F,O,FO   # con datos reales de funding/OI
+python backtesting/test_kronos_features.py                        # pruebas anti-fuga de las características de Kronos
+python backtesting/ml_daily_xs_v2.py --kronos kronos_forecasts.pkl --variants E,K   # con pronósticos reales de Kronos (celda_kronos.py en Colab GPU)
 python bots/test_master_bot.py                                    # tests del bot con selecciones fabricadas
 ```
 

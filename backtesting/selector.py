@@ -13,7 +13,7 @@ Puerta (todas obligatorias):
 Resultado: strategy_selection.json (lo lee el bot). Si ninguna pasa, el bot no opera.
 
 Uso: python selector.py [--data ../data/okx_5m.pkl] [--funding funding_data.pkl --funding-key okx_funding --spot-key okx_spot_1h]
-                        [--skip familias,tendencia,techosuelo,cerebro,ml,xsdiario,xsv2,derivados,carry]
+                        [--skip familias,tendencia,techosuelo,cerebro,ml,xsdiario,xsv2,derivados,kronos,carry]
 """
 from __future__ import annotations
 
@@ -315,6 +315,35 @@ def eval_derivs(derivs_paths, data=None, oi_lag=1):
     return out
 
 
+def eval_kronos(kronos_path, data=None):
+    """Variante K = E + pronósticos de Kronos, comparada de forma PAREADA con E desde 180 d después del primer pronóstico."""
+    import pickle
+    import kronos_features as kf
+    import ml_daily_xs as base_v1
+    import ml_daily_xs_v2 as v2
+    if data:
+        v2.KFRAC, base_v1.TEST_LEN = 0.12, 180
+    uni = load_universe_pkl(data or base_v1.DATA)
+    idx, P = base_v1.panels(uni)
+    Fbase, Falpha = base_v1.build_features(P), v2.alpha_features(P)
+    v2.BETA = Fbase["beta60"].to_numpy()
+    Fk = kf.build(pickle.load(open(kronos_path, "rb")), idx, list(P["close"].columns))
+    first = Fk["kr_ret"].notna().sum(axis=1).gt(20).idxmax() + pd.Timedelta(days=180)
+    quote30 = (P["close"] * P["volume"]).rolling(30).mean()
+    liq_ok = (quote30.rank(axis=1, pct=True) >= 0.30).to_numpy()
+    specs = v2.make_variants(Fbase, Falpha, None, None, Fk)
+    rE, rK = (v2.evaluate(v, specs[v], P, idx, liq_ok) for v in ("E", "K"))
+    tr = rK["df"][["entry_ts", "fold", "net"]].copy(); tr["entry_ts"] = pd.to_datetime(tr["entry_ts"], utc=True)
+    tr = tr[tr["entry_ts"] >= first]
+    e = make_evidence("modelo:xs_v2_kronos_K", tr, notes="E + pronósticos de Kronos (posible contaminación de preentrenamiento)", block=7)
+    A = rE["df"].set_index("entry_ts").net; B = rK["df"].set_index("entry_ts").net
+    common = A.index.intersection(B.index); common = common[common >= first]
+    d = (B.loc[common] - A.loc[common]).to_numpy()
+    lo, hi = v2.block_ci(d, 7)
+    e["robustness"] = [dict(name="mejora_pareada_vs_E", exp_net=float(d.mean()), ci_lo=float(lo), ci_hi=float(hi), n=int(len(d)))]
+    return [e]
+
+
 def load_universe_pkl(path):
     from engine import load_universe
     return load_universe(path, min_bars=150)
@@ -359,6 +388,7 @@ def main():
     ap.add_argument("--data", default=os.path.join(ROOT, "data", "okx_5m.pkl"))
     ap.add_argument("--daily-data", default=None, help="pickle diario largo para el modelo cross-sectional (colab/celda_historia_diaria.py)")
     ap.add_argument("--derivs", nargs="+", default=None, help="pickles de download_derivs.py / download_binance_metrics.py (funding y OI)")
+    ap.add_argument("--kronos", default=None, help="kronos_forecasts.pkl de colab/celda_kronos.py")
     ap.add_argument("--funding", default=None)
     ap.add_argument("--funding-key", default=None)
     ap.add_argument("--spot-key", default=None)
@@ -370,6 +400,8 @@ def main():
             ("cerebro", lambda: eval_cerebro(a.data)), ("ml", lambda: eval_ml(a.data)), ("xsdiario", lambda: eval_daily_xs(a.daily_data)), ("xsv2", lambda: eval_xs_v2(a.daily_data))]
     if a.derivs:
         jobs.append(("derivados", lambda: eval_derivs(a.derivs, a.daily_data)))
+    if a.kronos:
+        jobs.append(("kronos", lambda: eval_kronos(a.kronos, a.daily_data)))
     if a.funding:
         jobs.append(("carry", lambda: eval_carry(a.funding, a.funding_key, a.spot_key)))
     if a.daily_data:               # el evaluador v1 (K fijo, 2 años) queda reemplazado por el v2 con el historial largo

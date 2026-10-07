@@ -254,3 +254,17 @@ Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos
 1. Probar fuentes de información nuevas (funding, open interest, libro de órdenes) o carry de funding; con solo OHLCV ya no hay más que explorar (sección 6).
 2. Verificar si los logs de canasta/pirámide son paper o real. Si son paper, repetir con rellenos al bid/ask, taker en ambos lados y latencia, o con nocional mínimo en real durante 2-4 semanas.
 3. No operar con dinero real una estrategia hasta que tenga expectativa neta positiva fuera de muestra en al menos 3 periodos y más de ~300 trades.
+
+
+## 13. Kronos (modelo fundacional de velas): integración lista, resultado real pendiente
+
+Se integró un pronosticador tipo Kronos (shiyu-coder/Kronos, MIT; tokenizador + transformer preentrenado con 12B+ velas de 45+ exchanges) como **características** del modelo diario cross-sectional: retorno pronosticado a 7 días, volatilidad pronosticada, fracción de días al alza, máximo y mínimo pronosticados (`kronos_features.py`). Variante **K = E + Kronos**, comparada de forma pareada con E (mismas fechas, desde 180 d después del primer pronóstico) en `ml_daily_xs_v2.py --kronos` y en `selector.py --kronos`.
+
+Estado verificado:
+- Pruebas anti-fuga (`test_kronos_features.py`): alterar todo lo posterior a la fecha t no cambia el pronóstico de t; alineación sin relleno hacia adelante; resultado independiente del tamaño de lote.
+- Pipeline completo ejecutado con un predictor simulado (extrapola momentum): K - E = -0.07% por cohorte, IC95% [-0.23%, +0.10%] (sin mejora, como debe ser: el simulado no aporta información nueva). El selector lo rechaza.
+- **Los pesos reales no se pudieron descargar** (el entorno bloquea huggingface.co), así que no hay ningún resultado con Kronos real. Se ejecuta en Colab con GPU (`colab/celda_kronos.py`).
+
+Advertencias para interpretar el resultado real:
+- **Contaminación**: Kronos no publica su fecha de corte; el periodo antiguo pudo estar en su preentrenamiento y daría una mejora falsa. Solo las fechas posteriores al corte son una prueba limpia; se debe mirar el resultado por año y compararlo con el control de etiquetas barajadas.
+- Se evalúa con el mismo juicio estricto: IC95% inferior > 0 tras costos y mejora pareada significativa frente a E; si no, no se opera.

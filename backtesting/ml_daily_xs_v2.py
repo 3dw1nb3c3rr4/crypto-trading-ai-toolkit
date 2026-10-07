@@ -123,8 +123,10 @@ def load_derivs(paths):
     return fund, oi
 
 
-def make_variants(Fbase, Falpha, Ff=None, Fo=None):
+def make_variants(Fbase, Falpha, Ff=None, Fo=None, Fk=None):
     extra = {}
+    if Fk:
+        extra["K"] = (to_rank({**Fbase, **Falpha, **Fk}), "rank", "cohort")
     if Ff:
         extra["F"] = (to_rank({**Fbase, **Falpha, **Ff}), "rank", "cohort")
     if Fo:
@@ -339,6 +341,7 @@ def main():
     ap.add_argument("--stable", action="store_true")
     ap.add_argument("--liq", type=float, default=0.30)
     ap.add_argument("--derivs", nargs="+", default=None, help="pickles de download_derivs.py (funding / open interest)")
+    ap.add_argument("--kronos", default=None, help="kronos_forecasts.pkl (colab/celda_kronos.py) -> variante K = E + pronósticos de Kronos")
     ap.add_argument("--oi-lag", type=int, default=1, help="días de retraso del OI (1 = seguro; 0 solo si la foto es instantánea)")
     ap.add_argument("--betaneutral", action="store_true", help="patas dimensionadas para beta neto cero")
     ap.add_argument("--save", default=None, help="guardar las cohortes en este CSV")
@@ -365,7 +368,14 @@ def main():
         cov = {k: int(v.notna().any().sum()) for k, v in {**Ff, **Fo}.items() if k in ("fund_7d", "oi_chg7")}
         first = {k: str(v.notna().sum(axis=1).gt(20).idxmax().date()) for k, v in {**Ff, **Fo}.items() if k in ("fund_7d", "oi_chg7")}
         print(f"derivados: funding {len(fund)} símbolos, OI {len(oi)} | símbolos con dato: {cov} | primer día con >20 símbolos: {first}", flush=True)
-    specs = make_variants(Fbase, Falpha, Ff or None, Fo or None)
+    Fk = {}
+    if a.kronos:
+        import pickle, kronos_features as kf
+        fc = pickle.load(open(a.kronos, "rb"))
+        Fk = kf.build(fc, idx, list(P["close"].columns))
+        kr_first = Fk["kr_ret"].notna().sum(axis=1).gt(20).idxmax()
+        print(f"kronos: {len(fc)} pronósticos, primer día con >20 símbolos: {kr_first.date()}", flush=True)
+    specs = make_variants(Fbase, Falpha, Ff or None, Fo or None, Fk or None)
     print(f"símbolos={len(uni)} días={len(idx)} | features base={len(Fbase)} alpha={len(Falpha)} | K={K} n_drop={N_DROP} | "
           f"costo ida/vuelta {RT:.2%} | listo en {time.time()-t0:.0f}s", flush=True)
     tag = "SHUFFLE" if a.shuffle else ("PLANT" if a.plant else "REAL")
@@ -402,7 +412,10 @@ def main():
         if Ff or Fo:
             cnt = sum(((F_[k].notna().sum(axis=1) > 20) for F_ in (Ff, Fo) for k in F_ if k in ("fund_7d", "oi_chg7")))
             first_day = (cnt > 0).idxmax() + pd.Timedelta(days=45) if (cnt > 0).any() else None
-        for v in [x for x in results if x in ("F", "O", "FO")]:
+        if Fk:                                                     # deja 180 d de entrenamiento con características de Kronos
+            kd = kr_first + pd.Timedelta(days=180)
+            first_day = kd if first_day is None else max(first_day, kd)
+        for v in [x for x in results if x in ("F", "O", "FO", "K")]:
             A = results["E"]["df"].set_index("entry_ts").net; B = results[v]["df"].set_index("entry_ts").net
             common = A.index.intersection(B.index)
             if first_day is not None:
