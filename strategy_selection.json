@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-02T00:15:04Z",
+ "generated": "2026-10-07T01:56:21Z",
  "gate": {
   "min_trades": 300,
   "min_pf": 1.1,
@@ -10,7 +10,8 @@
  "haircut": 0.0015,
  "enabled": [],
  "watchlist": [
-  "modelo:xs_diario_gbm_7d"
+  "modelo:xs_diario_gbm_7d",
+  "modelo:xs_v2_alpha158_rank_7d"
  ],
  "strategies": [
   {
@@ -579,8 +580,8 @@
    "n": 421,
    "exp_net": 0.006568224772547638,
    "exp_net_raw": 0.00806822477254764,
-   "ci_lo": 0.0034538941790223645,
-   "ci_hi": 0.009771577593601345,
+   "ci_lo": 0.0013916294871740246,
+   "ci_hi": 0.012576581951468178,
    "pf": 1.7103568603744272,
    "win": 0.5510688836104513,
    "folds": [
@@ -618,29 +619,169 @@
     {
      "name": "universo_estable",
      "exp_net": 0.0005675282327560327,
-     "ci_lo": -0.0024821370468731214,
-     "ci_hi": 0.0034301067295612977,
+     "ci_lo": -0.00383513256222553,
+     "ci_hi": 0.00491293545215901,
      "n": 421
     },
     {
      "name": "50%_mas_liquido",
      "exp_net": 0.0025203213862729176,
-     "ci_lo": -0.0004761129086010551,
-     "ci_hi": 0.005481241993264094,
+     "ci_lo": -0.0022781314754687664,
+     "ci_hi": 0.007953366594003164,
      "n": 421
     },
     {
      "name": "costo_doble",
      "exp_net": 0.005168224772547638,
-     "ci_lo": 0.002053894179022365,
-     "ci_hi": 0.008371577593601343,
+     "ci_lo": -8.370512825975673e-06,
+     "ci_hi": 0.011176581951468178,
      "n": 421
     }
    ],
    "status": "en_observacion",
    "enabled": false,
    "reasons": [
-    "no mantiene IC95% > 0 en: universo_estable, 50%_mas_liquido"
+    "no mantiene IC95% > 0 en: universo_estable, 50%_mas_liquido, costo_doble"
+   ]
+  },
+  {
+   "name": "modelo:xs_v2_alpha158_rank_7d",
+   "kind": "trades",
+   "n": 421,
+   "exp_net": 0.008635215035899825,
+   "exp_net_raw": 0.010135215035899828,
+   "ci_lo": 0.003026838590664366,
+   "ci_hi": 0.014461607483713754,
+   "pf": 2.107828947819954,
+   "win": 0.6199524940617577,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 90,
+     "exp_net": 0.003925113411007754
+    },
+    {
+     "fold": 2,
+     "n": 90,
+     "exp_net": 0.019073837470674253
+    },
+    {
+     "fold": 3,
+     "n": 90,
+     "exp_net": 0.004156847604975803
+    },
+    {
+     "fold": 4,
+     "n": 90,
+     "exp_net": 0.003975942167196243
+    },
+    {
+     "fold": 5,
+     "n": 61,
+     "exp_net": 0.013665063463392812
+    }
+   ],
+   "port_ret": null,
+   "port_dd": null,
+   "config": null,
+   "notes": "IC medio +0.112; cohortes de 7 d\u00edas, K=10 por lado",
+   "robustness": [
+    {
+     "name": "universo_estable",
+     "exp_net": 0.0010478429110950998,
+     "ci_lo": -0.0049088346376852535,
+     "ci_hi": 0.0062401369371161645,
+     "n": 421
+    },
+    {
+     "name": "50%_mas_liquido",
+     "exp_net": 0.008485424432624868,
+     "ci_lo": 0.00397492793078618,
+     "ci_hi": 0.013320942384297122,
+     "n": 421
+    },
+    {
+     "name": "costo_doble",
+     "exp_net": 0.0072352150358998245,
+     "ci_lo": 0.0016268385906643653,
+     "ci_hi": 0.013061607483713754,
+     "n": 421
+    }
+   ],
+   "status": "en_observacion",
+   "enabled": false,
+   "reasons": [
+    "no mantiene IC95% > 0 en: universo_estable"
+   ]
+  },
+  {
+   "name": "modelo:xs_v2_base+alpha158_rank_7d",
+   "kind": "trades",
+   "n": 421,
+   "exp_net": 0.0090929681288139,
+   "exp_net_raw": 0.010592968128813902,
+   "ci_lo": 0.003311774409597005,
+   "ci_hi": 0.014973512376012316,
+   "pf": 2.142487343295648,
+   "win": 0.6270783847980997,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 90,
+     "exp_net": 0.00549096986559914
+    },
+    {
+     "fold": 2,
+     "n": 90,
+     "exp_net": 0.019159286705589758
+    },
+    {
+     "fold": 3,
+     "n": 90,
+     "exp_net": 0.005871987263379799
+    },
+    {
+     "fold": 4,
+     "n": 90,
+     "exp_net": -0.0017813672595088474
+    },
+    {
+     "fold": 5,
+     "n": 61,
+     "exp_net": 0.020351814597955174
+    }
+   ],
+   "port_ret": null,
+   "port_dd": null,
+   "config": null,
+   "notes": "IC medio +0.130; cohortes de 7 d\u00edas, K=10 por lado",
+   "robustness": [
+    {
+     "name": "universo_estable",
+     "exp_net": 0.005971842056805339,
+     "ci_lo": 0.0011542359479158404,
+     "ci_hi": 0.010425034441680232,
+     "n": 421
+    },
+    {
+     "name": "50%_mas_liquido",
+     "exp_net": 0.007755542950985901,
+     "ci_lo": 0.002615128707676384,
+     "ci_hi": 0.013177375374773901,
+     "n": 421
+    },
+    {
+     "name": "costo_doble",
+     "exp_net": 0.0076929681288139,
+     "ci_lo": 0.0019117744095970047,
+     "ci_hi": 0.013573512376012314,
+     "n": 421
+    }
+   ],
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "neto <= 0 en el/los periodo(s) [4]"
    ]
   }
  ]

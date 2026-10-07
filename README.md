@@ -25,6 +25,8 @@ Windows sin Git: descarga el ZIP de la rama desde GitHub y descomprímelo. Si `t
 | `backtesting/download_funding.py`, `backtesting/funding_carry.py`, `colab/celda_funding.py` | Descarga de funding y evaluación del carry delta-neutral con costos reales (resultado real pendiente de datos) |
 | `backtesting/selector.py`, `strategy_selection.json` | Selector: evalúa cada estrategia con una puerta estricta fuera de muestra y con costos; el bot solo opera las aprobadas (hoy: ninguna) |
 | `backtesting/ml_daily_xs.py`, `colab/celda_historia_diaria.py` | Modelo cross-sectional diario (117 símbolos) y descarga de ~6 años de velas diarias para confirmarlo; hoy "en observación" |
+| `backtesting/ml_daily_xs_v2.py` | Ideas de Qlib/FreqAI/ML4T (Alpha158 en ranking, TopkDropout, IC, Sharpe deflactado); mejor candidato "en observación" |
+| `bots/xs_daily/` | Bot nuevo cross-sectional diario, SOLO paper (entrenar, ejecutar a diario, simulación de prueba) |
 | `backtesting/trend_following.py` | Seguimiento de tendencia (Donchian + trailing), candidata evaluada por el selector |
 | `bots/master_trading_bot.py` | Bot de investigación: indicadores + (opcional) decisión real del Cerebro RL con velas 5m |
 | `bots/cerebro_rl/`, `bots/techosuelo/`, `bots/sesion_cerebro_db.py` | Copias de referencia del código original (no incluyen `trading_engine.py` ni los `main_*`, así que no se ejecutan solas) |
@@ -58,6 +60,10 @@ Selector de estrategias (re-ejecútalo cuando tengas más datos o estrategias nu
 python backtesting/selector.py                                    # evalúa todo y actualiza strategy_selection.json
 python backtesting/selector.py --funding funding_data.pkl --funding-key okx_funding --spot-key okx_spot_1h   # incluye el carry de funding
 python backtesting/ml_daily_xs.py                                 # modelo diario (--shuffle / --plant 6 / --stable / --liq 0.5 / --data <pkl largo>)
+python backtesting/ml_daily_xs_v2.py                              # variantes A..Ed (--shuffle / --plant 6 / --stable / --liq 0.5)
+python bots/xs_daily/train.py                                     # entrena el modelo del bot nuevo
+python bots/xs_daily/run_paper.py                                 # una ejecución diaria en paper (Binance por defecto; --exchange okx)
+python bots/xs_daily/test_paper_sim.py                            # simulación día a día con velas reales
 python bots/test_master_bot.py                                    # tests del bot con selecciones fabricadas
 ```
 

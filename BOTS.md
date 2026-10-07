@@ -30,3 +30,6 @@ Aplicar a tu archivo local (detén el bot antes): `python aplicar_parche_paper.p
 
 ## Selector de estrategias y bot
 `backtesting/selector.py` evalúa cada estrategia (indicadores, tendencia con trailing, Techo/Suelo, Cerebro RL, gradient boosting y, si hay datos, carry de funding) y guarda en `strategy_selection.json` cuáles pasan la puerta. `MasterTradingBot` solo emite señales de las estrategias aprobadas; si no hay ninguna responde HOLD. El modo investigación (`require_approval=False`) conserva la combinación de indicadores original, que no está validada. Estado actual: ninguna aprobada.
+
+## Bot cross-sectional diario (`bots/xs_daily/`, solo paper)
+Variante D del selector (features tipo Alpha158 de Qlib normalizadas por ranking). `train.py` entrena con todo el historial; `run_paper.py` se ejecuta una vez al día después de las 00:00 UTC: cierra cohortes de 7 días, abre una nueva (10 long / 10 short, 1/7 del capital) al precio en vivo con costos, y registra `paper_state.json` y `paper_log.csv`. Solo corre si la estrategia está aprobada o en observación en `strategy_selection.json`. No envía órdenes reales.

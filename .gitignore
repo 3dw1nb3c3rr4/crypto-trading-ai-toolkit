@@ -5,3 +5,6 @@ venv/
 .env
 backtest_results.*
 data/okx_5m.pkl
+bots/xs_daily/model_xs_D.pkl
+bots/xs_daily/paper_state.json
+bots/xs_daily/paper_log.csv

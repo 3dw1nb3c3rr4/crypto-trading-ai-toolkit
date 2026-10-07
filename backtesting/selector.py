@@ -13,7 +13,7 @@ Puerta (todas obligatorias):
 Resultado: strategy_selection.json (lo lee el bot). Si ninguna pasa, el bot no opera.
 
 Uso: python selector.py [--data ../data/okx_5m.pkl] [--funding funding_data.pkl --funding-key okx_funding --spot-key okx_spot_1h]
-                        [--skip familias,tendencia,techosuelo,cerebro,ml,xsdiario,carry]
+                        [--skip familias,tendencia,techosuelo,cerebro,ml,xsdiario,xsv2,carry]
 """
 from __future__ import annotations
 
@@ -42,21 +42,24 @@ MIN_TRAIN_TRADES = 150
 
 
 # ------------------------------------------------------------------ evidencia y puerta
-def _day_ci(entry_ts: pd.Series, vals: np.ndarray, n=3000, seed=0):
+def _day_ci(entry_ts: pd.Series, vals: np.ndarray, n=3000, seed=0, block=1):
+    """Bootstrap por días; con block>1 remuestrea bloques de días consecutivos (necesario si las posiciones se superponen)."""
     days = pd.DatetimeIndex(pd.to_datetime(entry_ts, utc=True)).date
     arrs = [v.to_numpy() for _, v in pd.Series(vals).groupby(days)]
+    if block > 1:
+        arrs = [np.concatenate(arrs[i:i + block]) for i in range(0, len(arrs) - block + 1, block)]
     r = np.random.default_rng(seed)
     m = [np.concatenate([arrs[i] for i in r.integers(0, len(arrs), len(arrs))]).mean() for _ in range(n)]
     return float(np.percentile(m, 2.5)), float(np.percentile(m, 97.5))
 
 
-def make_evidence(name, tr: pd.DataFrame, kind="trades", config=None, haircut=HAIRCUT, notes=""):
+def make_evidence(name, tr: pd.DataFrame, kind="trades", config=None, haircut=HAIRCUT, notes="", block=1):
     """tr: columnas entry_ts, net, [exit_ts], [fold]. Aplica el recorte de seguridad al neto de cada trade."""
     if tr is None or tr.empty:
         return dict(name=name, kind=kind, n=0, exp_net=float("nan"), ci_lo=float("nan"), ci_hi=float("nan"), pf=float("nan"),
                     win=float("nan"), folds=[], port_ret=None, port_dd=None, config=config, notes=notes or "sin operaciones")
     adj = tr["net"].to_numpy() - haircut
-    lo, hi = _day_ci(tr["entry_ts"], adj)
+    lo, hi = _day_ci(tr["entry_ts"], adj, block=block)
     w, l = adj[adj > 0].sum(), -adj[adj < 0].sum()
     folds = []
     if "fold" in tr:
@@ -239,7 +242,7 @@ def eval_daily_xs(data=None):
     def ev_from(df, name, notes):
         tr = df.rename(columns={"entry_ts": "entry_ts"})[["entry_ts", "fold", "net"]].copy()
         tr["entry_ts"] = pd.to_datetime(tr["entry_ts"], utc=True)
-        return make_evidence(name, tr, notes=notes)
+        return make_evidence(name, tr, notes=notes, block=7)
 
     base = ev_from(dx.evaluate_variant(**kw), "modelo:xs_diario_gbm_7d", "117 perpetuos, diario, long/short K=10, carteras superpuestas de 7 días")
     variants = {
@@ -253,6 +256,27 @@ def eval_daily_xs(data=None):
         e = ev_from(df, k, "")
         base["robustness"].append(dict(name=k, exp_net=e["exp_net"], ci_lo=e["ci_lo"], ci_hi=e["ci_hi"], n=e["n"]))
     return [base]
+
+
+def eval_xs_v2(data=None):
+    """Variantes D y E de ml_daily_xs_v2 (ideas de Qlib: features Alpha158 normalizadas por ranking, etiqueta de ranking)
+    con la misma batería de robustez fija: universo estable, 50% más líquido y costo doble."""
+    import ml_daily_xs_v2 as v2
+    out = []
+    for vn, label in (("D", "alpha158_rank"), ("E", "base+alpha158_rank")):
+        def ev(r, name, notes=""):
+            tr = r["df"][["entry_ts", "fold", "net"]].copy()
+            tr["entry_ts"] = pd.to_datetime(tr["entry_ts"], utc=True)
+            return make_evidence(name, tr, notes=notes, block=7)
+        main_r = v2.run_named(vn, data=data)
+        e = ev(main_r, f"modelo:xs_v2_{label}_7d", f"IC medio {main_r['ic']:+.3f}; cohortes de 7 días, K=10 por lado")
+        e["robustness"] = []
+        for rname, kw in (("universo_estable", dict(stable=True)), ("50%_mas_liquido", dict(liq=0.5)),
+                          ("costo_doble", dict(rt=2 * Costs().round_trip()))):
+            rr = ev(v2.run_named(vn, data=data, **kw), rname)
+            e["robustness"].append(dict(name=rname, exp_net=rr["exp_net"], ci_lo=rr["ci_lo"], ci_hi=rr["ci_hi"], n=rr["n"]))
+        out.append(e)
+    return out
 
 
 def eval_carry(funding_path, key, spot_key):
@@ -301,7 +325,7 @@ def main():
     a = ap.parse_args()
     skip = set(x for x in a.skip.split(",") if x)
     jobs = [("familias", eval_familias), ("tendencia", eval_tendencia), ("techosuelo", eval_techosuelo),
-            ("cerebro", lambda: eval_cerebro(a.data)), ("ml", lambda: eval_ml(a.data)), ("xsdiario", lambda: eval_daily_xs(a.daily_data))]
+            ("cerebro", lambda: eval_cerebro(a.data)), ("ml", lambda: eval_ml(a.data)), ("xsdiario", lambda: eval_daily_xs(a.daily_data)), ("xsv2", lambda: eval_xs_v2(a.daily_data))]
     if a.funding:
         jobs.append(("carry", lambda: eval_carry(a.funding, a.funding_key, a.spot_key)))
     results, t0 = [], time.time()

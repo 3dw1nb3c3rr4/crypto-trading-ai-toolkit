@@ -163,6 +163,35 @@ Hallazgos que explican la cautela:
 
 Estado en el selector: **EN OBSERVACIÓN** (solo paper). Para confirmarla o descartarla hace falta más historia con otros regímenes (`colab/celda_historia_diaria.py`, ~6 años) y luego `python backtesting/ml_daily_xs.py --data <archivo>` y el selector con `--daily-data`.
 
+## 10. Ideas de repositorios con más de 1,000 estrellas y bot nuevo (paper)
+
+Repos revisados (estrellas verificadas en cada página de GitHub): freqtrade 55.1k, microsoft/qlib 49.2k, stefan-jansen/machine-learning-for-trading 21.2k, hummingbot 20.3k, FinRL 16.6k, jesse 8.6k, hftbacktest 4.9k, passivbot 2.1k.
+
+Ideas aplicadas (`ml_daily_xs_v2.py`):
+- **Qlib:** features tipo Alpha158 (velas, MA/STD/MAX/MIN/cuantiles/RANK/RSV/IMAX/IMIN/correlación precio-volumen/CNTP/SUMP/volumen, regresión BETA/RSQR/RESI en 5 ventanas), normalización por ranking entre símbolos, etiqueta de ranking, gradient boosting muy regularizado, métricas IC/ICIR y estrategia TopkDropout (rotación limitada).
+- **FreqAI:** expansión de features en varias ventanas.
+- **ML4T:** walk-forward y Sharpe deflactado.
+- **Descartado por falta de datos:** el market making con órdenes límite (Hummingbot, Passivbot, hftbacktest) necesita libro de órdenes por tick; no se puede evaluar con velas.
+
+Resultado (7 variantes fijadas de antemano, H=7 días, K=10 por lado): normalizar por ranking duplica el IC (de 0.063 a 0.13).
+
+| Variante | IC | Neto por cohorte | Periodos positivos |
+|---|---|---|---|
+| A referencia (features base) | 0.063 | +0.73% | 4/5 |
+| D Alpha158 en ranking | 0.112 | +1.01% | 5/5 |
+| E base+Alpha158 en ranking | 0.130 | +1.06% | 4/5 |
+| Ed E con TopkDropout | 0.130 | +0.165% por día | 5/5 |
+
+Controles: etiquetas barajadas IC ≈ 0 y neto negativo; señal plantada detectada. El IC es positivo y significativo también en el universo estable (0.09 a 0.12) y en el 50% más líquido (0.15 a 0.16).
+
+Selector (con bootstrap por bloques de 7 días, corregido porque las cohortes se superponen):
+- **D: EN OBSERVACIÓN.** Pasa la prueba principal, el 50% más líquido (+0.85%, IC95% [+0.40%, +1.33%]) y el costo doble, pero no el universo estable (+0.11%, IC95% [-0.49%, +0.62%]).
+- **E: rechazada** por un periodo levemente negativo, aunque mantiene el IC95% > 0 en los tres universos.
+
+Advertencias: el Sharpe deflactado de la serie diaria (Ed) es 0.58 con 20 pruebas y 0.15 con 700, así que no es concluyente tras corregir por pruebas múltiples. El modelo tiende a ir largo en monedas grandes y corto en altcoins pequeñas y recientes, una apuesta que funcionó en este periodo bajista y podría fallar en una temporada alcista de altcoins. Solo hay 2 años y un ciclo.
+
+**Bot nuevo** (`bots/xs_daily/`, solo paper): entrena la variante D, abre cada día una cohorte de 10 long y 10 short con 1/7 del capital, la cierra a los 7 días y ejecuta al precio en vivo (ask/bid + slippage + comisión). Solo corre si la estrategia está aprobada o en observación. Simulación día a día con velas reales y modelo entrenado solo hasta el 31-may-2026: 89 cohortes, 0 errores de contabilidad, +1.53% por cohorte fuera de muestra, 71% positivas, $1,000 → $1,198 realizados (jun-sep 2026, mismo periodo bajista que el último tramo del walk-forward).
+
 ## Limitaciones de este análisis
 
 Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos listados hoy (sesgo de supervivencia); sin funding ni profundidad del libro; los modelos pudieron entrenarse con parte de estos mismos datos.
