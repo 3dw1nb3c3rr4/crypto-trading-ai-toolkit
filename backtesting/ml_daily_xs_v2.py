@@ -35,6 +35,16 @@ import ml_daily_xs as base  # noqa: E402
 from engine import Costs, load_universe  # noqa: E402
 
 H, K, N_DROP = 7, 10, 2
+KFRAC = None            # si se define, K = 12% de los símbolos válidos cada día (universos que cambian de tamaño)
+NEW_DATA_CUTOFF = "2024-09-05"   # todo lo anterior nunca se usó en análisis previos (el cache de 2 años empieza aquí)
+
+
+def kk(nvalid):
+    return max(3, int(round(KFRAC * nvalid))) if KFRAC else K
+
+
+def min_valid():
+    return 20 if KFRAC else 2 * K + 10
 RT = Costs().round_trip()
 ONE_WAY = RT / 2
 MARKET_LEVEL = ("mkt7", "btc7")
@@ -135,7 +145,7 @@ def predict_walk_forward(F, fwd, ylab, liq_ok, shuffle, plant, rng):
                                             l2_regularization=50.0, max_features=0.8, random_state=0).fit(X, y)
         for t in range(t0, t1):
             valid = liq_ok[t] & np.isfinite(fwd[t]) & (np.isfinite(X3[t]).sum(axis=1) > 0)
-            if valid.sum() >= 2 * K + 10:
+            if valid.sum() >= min_valid():
                 idv = np.where(valid)[0]
                 PRED[t, idv] = mdl.predict(X3[t][idv])
         folds[t0:t1] = fi
@@ -146,13 +156,14 @@ def cohort_returns(PRED, fwd, folds, idx):
     rows = []
     for t in np.where(folds > 0)[0]:
         p = PRED[t]; v = np.where(np.isfinite(p) & np.isfinite(fwd[t]))[0]
-        if len(v) < 2 * K + 10:
+        if len(v) < min_valid():
             continue
+        k = kk(len(v))
         o_ = v[np.argsort(p[v])]
-        lr, sr = np.mean(fwd[t][o_[-K:]]), np.mean(fwd[t][o_[:K]])
+        lr, sr = np.mean(fwd[t][o_[-k:]]), np.mean(fwd[t][o_[:k]])
         g = 0.5 * lr - 0.5 * sr
-        rows.append((idx[t + 1], folds[t], g, g - RT))
-    return pd.DataFrame(rows, columns=["entry_ts", "fold", "gross", "net"])
+        rows.append((idx[t + 1], folds[t], g, g - RT, float(np.mean(fwd[t][v])), k, len(v)))
+    return pd.DataFrame(rows, columns=["entry_ts", "fold", "gross", "net", "mkt", "k", "nvalid"])
 
 
 def dropout_returns(PRED, P, folds, idx):
@@ -162,12 +173,13 @@ def dropout_returns(PRED, P, folds, idx):
     longs, shorts, rows = set(), set(), []
     for t in np.where(folds > 0)[0]:
         p = PRED[t]; v = np.where(np.isfinite(p))[0]
-        if len(v) < 2 * K + 10 or t + 2 >= len(o):
+        if len(v) < min_valid() or t + 2 >= len(o):
             continue
         order = v[np.argsort(p[v])]
+        k = kk(len(v))
         changed = 0
         if not longs:
-            longs, shorts = set(order[-K:]), set(order[:K]); changed = 2 * K
+            longs, shorts = set(order[-k:]), set(order[:k]); changed = 2 * k
         else:
             vs = set(v)
             longs &= vs; shorts &= vs
@@ -178,11 +190,13 @@ def dropout_returns(PRED, P, folds, idx):
                     better = p[c_] > p[w_] if side == "L" else p[c_] < p[w_]
                     if better:
                         hold.discard(w_); hold.add(c_); changed += 2
-                while len(hold) < K:                                     # reponer si se perdió alguna
+                while len(hold) < k:                                     # reponer si se perdió alguna o creció el universo
                     c_ = next(i for i in cand_order if i not in hold and i not in (shorts if side == "L" else longs)); hold.add(c_); changed += 1
+                while len(hold) > k:                                     # recortar si el universo se achicó
+                    w_ = min(hold, key=lambda i: p[i]) if side == "L" else max(hold, key=lambda i: p[i]); hold.discard(w_); changed += 1
         r_long = np.nanmean(oo[t + 1][list(longs)]); r_short = np.nanmean(oo[t + 1][list(shorts)])
         gross = 0.5 * r_long - 0.5 * r_short
-        cost = changed * (0.5 / K) * ONE_WAY                              # cada posición que entra o sale paga un lado
+        cost = changed * (0.5 / k) * ONE_WAY                              # cada posición que entra o sale paga un lado
         rows.append((idx[t + 1], folds[t], gross, gross - cost, changed))
     return pd.DataFrame(rows, columns=["entry_ts", "fold", "gross", "net", "changed"])
 
@@ -235,7 +249,12 @@ def evaluate(variant_name, spec, P, idx, liq_ok, shuffle=False, plant=0.0, seed=
     sharpe = df.net.mean() / df.net.std() * np.sqrt(per_year)
     byf = df.groupby("fold").net.mean()
     eq = np.cumprod(1 + daily_equiv); dd = float((eq / np.maximum.accumulate(eq) - 1).min())
-    return dict(name=variant_name, port=port, n=len(df), ic=ic, icir=icir, ic_lo=ic_lo, ic_hi=ic_hi,
+    yr = df.groupby(pd.DatetimeIndex(df.entry_ts).year).agg(n=("net", "size"), net=("net", "mean"),
+                                                           mkt=("mkt", "mean") if "mkt" in df else ("net", "size"))
+    new = df[pd.DatetimeIndex(df.entry_ts) < pd.Timestamp(NEW_DATA_CUTOFF, tz="UTC")]
+    new_ci = block_ci(new.net.to_numpy(), step) if len(new) > 4 * step else (np.nan, np.nan)
+    return dict(yearly=yr, new_n=len(new), new_net=float(new.net.mean()) if len(new) else np.nan, new_ci=new_ci,
+                name=variant_name, port=port, n=len(df), ic=ic, icir=icir, ic_lo=ic_lo, ic_hi=ic_hi,
                 gross=df.gross.mean(), net=df.net.mean(), ci_lo=lo, ci_hi=hi, sharpe=sharpe,
                 folds=[float(x) for x in byf.values], maxdd=dd, dsr20=dsr(df.net.to_numpy(), 20),
                 dsr700=dsr(df.net.to_numpy(), 700), turnover=float(df.changed.mean()) if "changed" in df else None, df=df)
@@ -266,9 +285,15 @@ def main():
     ap.add_argument("--plant", type=float, default=0.0)
     ap.add_argument("--stable", action="store_true")
     ap.add_argument("--liq", type=float, default=0.30)
+    ap.add_argument("--kfrac", type=float, default=None, help="K = fracción de símbolos válidos por lado (p.ej. 0.12)")
+    ap.add_argument("--test-len", type=int, default=90, help="días por periodo de prueba (reentrena en cada uno)")
+    ap.add_argument("--stable-bars", type=int, default=700, help="velas mínimas para --stable")
     a = ap.parse_args()
     t0 = time.time()
-    uni = load_universe(a.data, min_bars=700 if a.stable else 150)
+    global KFRAC
+    KFRAC = a.kfrac
+    base.TEST_LEN = a.test_len
+    uni = load_universe(a.data, min_bars=a.stable_bars if a.stable else 150)
     idx, P = base.panels(uni)
     Fbase, Falpha = base.build_features(P), alpha_features(P)
     quote30 = (P["close"] * P["volume"]).rolling(30).mean()
@@ -285,6 +310,12 @@ def main():
               f"maxDD={r['maxdd']:.1%} DSR(N=20)={r['dsr20']:.2f} DSR(N=700)={r['dsr700']:.2f}"
               + (f" rotación={r['turnover']:.1f} cambios/día" if r["turnover"] else ""))
         print("      por periodo:", " ".join(f"{x:+.2%}" for x in r["folds"]), flush=True)
+        if "mkt" in r["df"]:
+            print("      por año:", " | ".join(f"{y}: neto {row.net:+.2%} mercado {row.mkt:+.2%} (n={int(row.n)})" for y, row in r["yearly"].iterrows()))
+        else:
+            print("      por año:", " | ".join(f"{y}: neto {row.net:+.3%}/día (n={int(row.n)})" for y, row in r["yearly"].iterrows()))
+        if r["new_n"]:
+            print(f"      DATOS NUEVOS (antes de {NEW_DATA_CUTOFF}, nunca usados): n={r['new_n']} neto={r['new_net']:+.3%} IC95%[{r['new_ci'][0]:+.3%},{r['new_ci'][1]:+.3%}]")
     print(f"\ntotal {time.time()-t0:.0f}s")
 
 
