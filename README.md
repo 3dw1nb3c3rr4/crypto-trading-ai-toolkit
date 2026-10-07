@@ -28,6 +28,7 @@ Windows sin Git: descarga el ZIP de la rama desde GitHub y descomprímelo. Si `t
 | `backtesting/ml_daily_xs_v2.py` | Ideas de Qlib/FreqAI/ML4T (Alpha158 en ranking, TopkDropout, IC, Sharpe deflactado); mejor candidato "en observación" |
 | `bots/xs_daily/` | Bot nuevo cross-sectional diario, SOLO paper (entrenar, ejecutar a diario, simulación de prueba) |
 | `backtesting/download_derivs.py`, `download_binance_metrics.py`, `derivs_features.py`, `funding_arb.py`, `universe_symbols.txt` | Funding y open interest: descarga, características sin fuga de información, arbitraje de funding (Hummingbot) y carry; resultado real pendiente de datos |
+| `colab/celda_derivados.py` | Celda única de Colab: funding y open interest de OKX (API) y de Binance (archivos públicos), con reporte de cobertura |
 | `backtesting/trend_following.py` | Seguimiento de tendencia (Donchian + trailing), candidata evaluada por el selector |
 | `bots/master_trading_bot.py` | Bot de investigación: indicadores + (opcional) decisión real del Cerebro RL con velas 5m |
 | `bots/cerebro_rl/`, `bots/techosuelo/`, `bots/sesion_cerebro_db.py` | Copias de referencia del código original (no incluyen `trading_engine.py` ni los `main_*`, así que no se ejecutan solas) |

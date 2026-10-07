@@ -239,6 +239,12 @@ Por año (variante D, neto por cohorte): 2022 +0.47% (mercado -1.91%), 2023 **-0
 
 Controles del pipeline: con derivados sin información, F/O/FO no cambian el resultado de E (diferencia pareada -0.05% a 0.00%, no significativa) y el selector rechaza; con información plantada en el OI, la mejora pareada es +12.5% [+11.6%, +13.5%] y el selector aprueba. Es decir, si hay información real en el OI o el funding, el sistema la detectará; si no la hay, no inventará una ventaja.
 
+### 12b. Celda única de Colab para funding y OI (OKX + archivos públicos de Binance)
+
+`colab/celda_derivados.py` descarga en dos etapas y termina con un **reporte de cobertura** (símbolos, historial mediano, fecha más antigua) para saber exactamente qué entregó cada fuente: (1) OKX por API (funding y OI; el historial que entregue se informa, no se asume); (2) Binance `data.binance.vision`: funding mensual (desde 2020) y OI diario (desde 2021-12), comprobando antes con `--probe` que los archivos existen y se leen. Prueba de extremo a extremo con exchange y servidor simulados (incluidos tres formatos de fecha distintos) y carga posterior en el modelo.
+
+Defectos encontrados y corregidos al probarla: (a) pandas 3 trata el texto como `str` (no `object`) y las fechas pueden venir en microsegundos, lo que rompía la conversión a milisegundos del funding; ahora `to_ms` es robusta al tipo y a la resolución; (b) `load_derivs` se quedaba con el primer archivo que tuviera cada símbolo, de modo que 90 días de OKX tapaban 450 días de Binance; ahora elige por símbolo la fuente de mayor historial y no mezcla fuentes (los niveles de OI difieren entre exchanges).
+
 ## Limitaciones de este análisis
 
 Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos listados hoy (sesgo de supervivencia); sin funding ni profundidad del libro; los modelos pudieron entrenarse con parte de estos mismos datos.

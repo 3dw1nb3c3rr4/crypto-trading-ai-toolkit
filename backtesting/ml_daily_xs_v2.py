@@ -107,15 +107,19 @@ def to_rank(F):
 
 
 def load_derivs(paths):
-    """Une varios pickles de download_derivs.py: por tipo (funding / oi) y símbolo manda el primer archivo que lo tenga."""
+    """Une varios pickles de download_derivs.py / download_binance_metrics.py. Por tipo (funding / oi) y símbolo se usa UNA sola fuente:
+    la de mayor historial (no se mezclan fuentes porque las unidades y niveles de OI difieren entre exchanges)."""
     import pickle
     fund, oi = {}, {}
+
+    def span(df):
+        return (float(df["ts"].max()) - float(df["ts"].min())) if len(df) > 1 else 0.0
     for p in paths or []:
         d = pickle.load(open(p, "rb"))
-        for k, v in d.get("funding", {}).items():
-            fund.setdefault(k, v)
-        for k, v in d.get("oi", {}).items():
-            oi.setdefault(k, v)
+        for store, key in ((fund, "funding"), (oi, "oi")):
+            for sym, df in d.get(key, {}).items():
+                if len(df) and (sym not in store or span(df) > span(store[sym])):
+                    store[sym] = df
     return fund, oi
 
 
