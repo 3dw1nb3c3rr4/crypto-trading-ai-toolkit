@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-07T01:56:21Z",
+ "generated": "2026-10-07T14:02:02Z",
  "gate": {
   "min_trades": 300,
   "min_pf": 1.1,
@@ -9,10 +9,7 @@
  },
  "haircut": 0.0015,
  "enabled": [],
- "watchlist": [
-  "modelo:xs_diario_gbm_7d",
-  "modelo:xs_v2_alpha158_rank_7d"
- ],
+ "watchlist": [],
  "strategies": [
   {
    "name": "indicadores:rsi_reversion",
@@ -575,213 +572,207 @@
    ]
   },
   {
-   "name": "modelo:xs_diario_gbm_7d",
-   "kind": "trades",
-   "n": 421,
-   "exp_net": 0.006568224772547638,
-   "exp_net_raw": 0.00806822477254764,
-   "ci_lo": 0.0013916294871740246,
-   "ci_hi": 0.012576581951468178,
-   "pf": 1.7103568603744272,
-   "win": 0.5510688836104513,
-   "folds": [
-    {
-     "fold": 1,
-     "n": 90,
-     "exp_net": 0.0029715255326552862
-    },
-    {
-     "fold": 2,
-     "n": 90,
-     "exp_net": 0.012071543429046412
-    },
-    {
-     "fold": 3,
-     "n": 90,
-     "exp_net": 0.005182369015039817
-    },
-    {
-     "fold": 4,
-     "n": 90,
-     "exp_net": 0.00044083417009589817
-    },
-    {
-     "fold": 5,
-     "n": 61,
-     "exp_net": 0.014840297311921118
-    }
-   ],
-   "port_ret": null,
-   "port_dd": null,
-   "config": null,
-   "notes": "117 perpetuos, diario, long/short K=10, carteras superpuestas de 7 d\u00edas",
-   "robustness": [
-    {
-     "name": "universo_estable",
-     "exp_net": 0.0005675282327560327,
-     "ci_lo": -0.00383513256222553,
-     "ci_hi": 0.00491293545215901,
-     "n": 421
-    },
-    {
-     "name": "50%_mas_liquido",
-     "exp_net": 0.0025203213862729176,
-     "ci_lo": -0.0022781314754687664,
-     "ci_hi": 0.007953366594003164,
-     "n": 421
-    },
-    {
-     "name": "costo_doble",
-     "exp_net": 0.005168224772547638,
-     "ci_lo": -8.370512825975673e-06,
-     "ci_hi": 0.011176581951468178,
-     "n": 421
-    }
-   ],
-   "status": "en_observacion",
-   "enabled": false,
-   "reasons": [
-    "no mantiene IC95% > 0 en: universo_estable, 50%_mas_liquido, costo_doble"
-   ]
-  },
-  {
    "name": "modelo:xs_v2_alpha158_rank_7d",
    "kind": "trades",
-   "n": 421,
-   "exp_net": 0.008635215035899825,
-   "exp_net_raw": 0.010135215035899828,
-   "ci_lo": 0.003026838590664366,
-   "ci_hi": 0.014461607483713754,
-   "pf": 2.107828947819954,
-   "win": 0.6199524940617577,
+   "n": 1725,
+   "exp_net": 0.0010906234975359994,
+   "exp_net_raw": 0.002590623497536,
+   "ci_lo": -0.004238921125114108,
+   "ci_hi": 0.006257717950740834,
+   "pf": 1.0582733391044394,
+   "win": 0.552463768115942,
    "folds": [
     {
      "fold": 1,
-     "n": 90,
-     "exp_net": 0.003925113411007754
+     "n": 24,
+     "exp_net": 0.015960044585445213
     },
     {
      "fold": 2,
-     "n": 90,
-     "exp_net": 0.019073837470674253
+     "n": 180,
+     "exp_net": -0.0020687971854896465
     },
     {
      "fold": 3,
-     "n": 90,
-     "exp_net": 0.004156847604975803
+     "n": 180,
+     "exp_net": -0.0019096188676941436
     },
     {
      "fold": 4,
-     "n": 90,
-     "exp_net": 0.003975942167196243
+     "n": 180,
+     "exp_net": 0.00694092002955655
     },
     {
      "fold": 5,
-     "n": 61,
-     "exp_net": 0.013665063463392812
+     "n": 180,
+     "exp_net": -0.013769860234876814
+    },
+    {
+     "fold": 6,
+     "n": 180,
+     "exp_net": 0.00324417712587078
+    },
+    {
+     "fold": 7,
+     "n": 180,
+     "exp_net": 0.003337832853672048
+    },
+    {
+     "fold": 8,
+     "n": 180,
+     "exp_net": 0.0048692299919032385
+    },
+    {
+     "fold": 9,
+     "n": 180,
+     "exp_net": 0.007754311816122989
+    },
+    {
+     "fold": 10,
+     "n": 180,
+     "exp_net": -0.009168622662240078
+    },
+    {
+     "fold": 11,
+     "n": 81,
+     "exp_net": 0.02020939934778306
     }
    ],
    "port_ret": null,
    "port_dd": null,
    "config": null,
-   "notes": "IC medio +0.112; cohortes de 7 d\u00edas, K=10 por lado",
+   "notes": "IC medio +0.132; cohortes de 7 d\u00edas, K=10 por lado",
    "robustness": [
     {
      "name": "universo_estable",
-     "exp_net": 0.0010478429110950998,
-     "ci_lo": -0.0049088346376852535,
-     "ci_hi": 0.0062401369371161645,
-     "n": 421
+     "exp_net": 0.0012206565321379141,
+     "ci_lo": -0.0036418161729415235,
+     "ci_hi": 0.0059516188208962656,
+     "n": 1725
     },
     {
      "name": "50%_mas_liquido",
-     "exp_net": 0.008485424432624868,
-     "ci_lo": 0.00397492793078618,
-     "ci_hi": 0.013320942384297122,
-     "n": 421
+     "exp_net": 0.00564946473786875,
+     "ci_lo": -0.000339996024709267,
+     "ci_hi": 0.011327736713518926,
+     "n": 1053
     },
     {
      "name": "costo_doble",
-     "exp_net": 0.0072352150358998245,
-     "ci_lo": 0.0016268385906643653,
-     "ci_hi": 0.013061607483713754,
-     "n": 421
-    }
-   ],
-   "status": "en_observacion",
-   "enabled": false,
-   "reasons": [
-    "no mantiene IC95% > 0 en: universo_estable"
-   ]
-  },
-  {
-   "name": "modelo:xs_v2_base+alpha158_rank_7d",
-   "kind": "trades",
-   "n": 421,
-   "exp_net": 0.0090929681288139,
-   "exp_net_raw": 0.010592968128813902,
-   "ci_lo": 0.003311774409597005,
-   "ci_hi": 0.014973512376012316,
-   "pf": 2.142487343295648,
-   "win": 0.6270783847980997,
-   "folds": [
-    {
-     "fold": 1,
-     "n": 90,
-     "exp_net": 0.00549096986559914
-    },
-    {
-     "fold": 2,
-     "n": 90,
-     "exp_net": 0.019159286705589758
-    },
-    {
-     "fold": 3,
-     "n": 90,
-     "exp_net": 0.005871987263379799
-    },
-    {
-     "fold": 4,
-     "n": 90,
-     "exp_net": -0.0017813672595088474
-    },
-    {
-     "fold": 5,
-     "n": 61,
-     "exp_net": 0.020351814597955174
-    }
-   ],
-   "port_ret": null,
-   "port_dd": null,
-   "config": null,
-   "notes": "IC medio +0.130; cohortes de 7 d\u00edas, K=10 por lado",
-   "robustness": [
-    {
-     "name": "universo_estable",
-     "exp_net": 0.005971842056805339,
-     "ci_lo": 0.0011542359479158404,
-     "ci_hi": 0.010425034441680232,
-     "n": 421
-    },
-    {
-     "name": "50%_mas_liquido",
-     "exp_net": 0.007755542950985901,
-     "ci_lo": 0.002615128707676384,
-     "ci_hi": 0.013177375374773901,
-     "n": 421
-    },
-    {
-     "name": "costo_doble",
-     "exp_net": 0.0076929681288139,
-     "ci_lo": 0.0019117744095970047,
-     "ci_hi": 0.013573512376012314,
-     "n": 421
+     "exp_net": -0.0003093765024640003,
+     "ci_lo": -0.005638921125114107,
+     "ci_hi": 0.004857717950740834,
+     "n": 1725
     }
    ],
    "status": "rechazada",
    "enabled": false,
    "reasons": [
-    "neto <= 0 en el/los periodo(s) [4]"
+    "IC95% del neto incluye cero o es negativo [-0.424%, +0.626%]",
+    "neto <= 0 en el/los periodo(s) [2, 3, 5, 10]",
+    "factor de beneficio 1.06 < 1.1"
+   ]
+  },
+  {
+   "name": "modelo:xs_v2_base+alpha158_rank_7d",
+   "kind": "trades",
+   "n": 1725,
+   "exp_net": 0.0010597160696527467,
+   "exp_net_raw": 0.002559716069652748,
+   "ci_lo": -0.00447115296792863,
+   "ci_hi": 0.006297706255733101,
+   "pf": 1.0567654109373676,
+   "win": 0.5588405797101449,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 24,
+     "exp_net": 0.018160772236469183
+    },
+    {
+     "fold": 2,
+     "n": 180,
+     "exp_net": -0.005976993868848873
+    },
+    {
+     "fold": 3,
+     "n": 180,
+     "exp_net": -0.00518529837016295
+    },
+    {
+     "fold": 4,
+     "n": 180,
+     "exp_net": 0.012472787726216314
+    },
+    {
+     "fold": 5,
+     "n": 180,
+     "exp_net": -0.011875103604149888
+    },
+    {
+     "fold": 6,
+     "n": 180,
+     "exp_net": 0.000862879515774748
+    },
+    {
+     "fold": 7,
+     "n": 180,
+     "exp_net": 0.003258150482932525
+    },
+    {
+     "fold": 8,
+     "n": 180,
+     "exp_net": 0.006015654447020431
+    },
+    {
+     "fold": 9,
+     "n": 180,
+     "exp_net": 0.0117811962175163
+    },
+    {
+     "fold": 10,
+     "n": 180,
+     "exp_net": -0.00965567001105992
+    },
+    {
+     "fold": 11,
+     "n": 81,
+     "exp_net": 0.01341460777941684
+    }
+   ],
+   "port_ret": null,
+   "port_dd": null,
+   "config": null,
+   "notes": "IC medio +0.141; cohortes de 7 d\u00edas, K=10 por lado",
+   "robustness": [
+    {
+     "name": "universo_estable",
+     "exp_net": 0.0013730925228731686,
+     "ci_lo": -0.003544322937125201,
+     "ci_hi": 0.006181990775522094,
+     "n": 1725
+    },
+    {
+     "name": "50%_mas_liquido",
+     "exp_net": 0.004921931007003421,
+     "ci_lo": -0.0017538299083408356,
+     "ci_hi": 0.01103377755098629,
+     "n": 1053
+    },
+    {
+     "name": "costo_doble",
+     "exp_net": -0.00034028393034725256,
+     "ci_lo": -0.005871152967928629,
+     "ci_hi": 0.004897706255733101,
+     "n": 1725
+    }
+   ],
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.447%, +0.630%]",
+    "neto <= 0 en el/los periodo(s) [2, 3, 5, 10]",
+    "factor de beneficio 1.06 < 1.1"
    ]
   }
  ]

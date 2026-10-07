@@ -261,7 +261,10 @@ def eval_daily_xs(data=None):
 def eval_xs_v2(data=None):
     """Variantes D y E de ml_daily_xs_v2 (ideas de Qlib: features Alpha158 normalizadas por ranking, etiqueta de ranking)
     con la misma batería de robustez fija: universo estable, 50% más líquido y costo doble."""
+    import ml_daily_xs as base_v1
     import ml_daily_xs_v2 as v2
+    if data:                       # historial largo: universo de tamaño variable y reentrenamiento cada 180 días
+        v2.KFRAC, base_v1.TEST_LEN = 0.12, 180
     out = []
     for vn, label in (("D", "alpha158_rank"), ("E", "base+alpha158_rank")):
         def ev(r, name, notes=""):
@@ -328,6 +331,8 @@ def main():
             ("cerebro", lambda: eval_cerebro(a.data)), ("ml", lambda: eval_ml(a.data)), ("xsdiario", lambda: eval_daily_xs(a.daily_data)), ("xsv2", lambda: eval_xs_v2(a.daily_data))]
     if a.funding:
         jobs.append(("carry", lambda: eval_carry(a.funding, a.funding_key, a.spot_key)))
+    if a.daily_data:               # el evaluador v1 (K fijo, 2 años) queda reemplazado por el v2 con el historial largo
+        skip.add("xsdiario")
     results, t0 = [], time.time()
     for name, fn in jobs:
         if name in skip:

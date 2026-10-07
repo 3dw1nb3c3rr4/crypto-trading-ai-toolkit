@@ -297,6 +297,8 @@ def run_named(vname, stable=False, liq=0.30, rt=None, data=None, shuffle=False):
         uni = load_universe(data or base.DATA, min_bars=700 if stable else 150)
         idx, P = base.panels(uni)
         Fbase, Falpha = base.build_features(P), alpha_features(P)
+        global BETA
+        BETA = Fbase["beta60"].to_numpy()
         quote30 = (P["close"] * P["volume"]).rolling(30).mean()
         liq_ok = (quote30.rank(axis=1, pct=True) >= liq).to_numpy()
         return evaluate(vname, make_variants(Fbase, Falpha)[vname], P, idx, liq_ok, shuffle=shuffle)

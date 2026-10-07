@@ -33,3 +33,5 @@ Aplicar a tu archivo local (detén el bot antes): `python aplicar_parche_paper.p
 
 ## Bot cross-sectional diario (`bots/xs_daily/`, solo paper)
 Variante D del selector (features tipo Alpha158 de Qlib normalizadas por ranking). `train.py` entrena con todo el historial; `run_paper.py` se ejecuta una vez al día después de las 00:00 UTC: cierra cohortes de 7 días, abre una nueva (10 long / 10 short, 1/7 del capital) al precio en vivo con costos, y registra `paper_state.json` y `paper_log.csv`. Solo corre si la estrategia está aprobada o en observación en `strategy_selection.json`. No envía órdenes reales.
+
+Estado tras la validación con 6 años: el selector rechaza la estrategia de este bot (no está aprobada ni en observación), por lo que `run_paper.py` se niega a correr salvo con `--force`. Úsalo solo para estudiar el comportamiento en paper, nunca con dinero real.

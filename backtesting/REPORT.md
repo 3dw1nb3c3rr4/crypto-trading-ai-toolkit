@@ -209,6 +209,21 @@ Por año (variante D, neto por cohorte): 2022 +0.47% (mercado -1.91%), 2023 **-0
 
 **Conclusión:** el resultado de +0.8% a +1.0% de los 2 años recientes no se sostiene en 6 años. El IC sigue siendo positivo (0.13 a 0.14: el modelo ordena mejor que el azar), pero la cartera long/short de los extremos solo rinde ~+0.26% por cohorte, sin significancia, con caídas de -40% a -69%; el segmento anterior a sep-2024 es estadísticamente cero. Las variantes quedan **rechazadas** por el selector con estos datos. El patrón por año (gana en mercados bajistas, pierde en el alcista de 2023) sugiere dependencia del régimen.
 
+### 11b. Neutralizar el beta, carteras más amplias y costos de ejecución (variante D, 6 años)
+
+| Cartera | Neto por cohorte | IC95% | Alfa vs mercado | Caída máx. | Datos nuevos (< sep-2024) |
+|---|---|---|---|---|---|
+| K=12% por lado, sin neutralizar | +0.26% | [-0.27%, +0.78%] | +0.24% [-0.30%, +0.75%], beta -0.11 | -51% | +0.07% |
+| K=12%, neutral en beta | +0.26% | [-0.22%, +0.76%] | +0.27% [-0.24%, +0.79%], beta +0.02 | -37% | +0.18% [-0.54%, +1.00%] |
+| K=25%, neutral en beta | +0.19% | [-0.12%, +0.50%] | +0.19% [-0.12%, +0.51%] | -19.5% | +0.23% [-0.21%, +0.70%] |
+| K=40%, neutral en beta | +0.14% | [-0.09%, +0.36%] | +0.14% [-0.09%, +0.36%] | -22% | +0.21% [-0.11%, +0.54%] |
+
+- Parte de la ganancia sin neutralizar venía de un beta significativamente negativo (-0.11: estar levemente corto del mercado). Al neutralizarlo, la caída máxima baja y los años quedan más parejos, pero el alfa sigue sin ser significativo.
+- Sensibilidad al costo (K=25%, neutral en beta): 0.14% → +0.19%; 0.08% → +0.25% [-0.06%, +0.56%]; 0.04% (solo maker, hipotético) → +0.29% [-0.02%, +0.60%]. Ni con ejecución maker el intervalo se separa de cero.
+- El modelo ordena mejor que el azar (IC 0.13, significativo), pero ese poder de ordenamiento es demasiado pequeño en términos económicos: ~+0.3% bruto por semana contra 0.14% de costo.
+
+**Selector con el historial largo** (`python backtesting/selector.py --daily-data data/ohlcv_daily_long.pkl`): ninguna estrategia aprobada ni en observación. Las variantes D y E quedan rechazadas (neto tras recorte +0.11%, IC95% inferior -0.42%; periodos 2, 3, 5 y 10 negativos). Las tres pruebas de robustez tampoco superan la barrera.
+
 ## Limitaciones de este análisis
 
 Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos listados hoy (sesgo de supervivencia); sin funding ni profundidad del libro; los modelos pudieron entrenarse con parte de estos mismos datos.
