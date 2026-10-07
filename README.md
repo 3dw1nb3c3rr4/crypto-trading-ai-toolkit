@@ -27,6 +27,7 @@ Windows sin Git: descarga el ZIP de la rama desde GitHub y descomprímelo. Si `t
 | `backtesting/ml_daily_xs.py`, `colab/celda_historia_diaria.py` | Modelo cross-sectional diario (117 símbolos) y descarga de ~6 años de velas diarias para confirmarlo; hoy "en observación" |
 | `backtesting/ml_daily_xs_v2.py` | Ideas de Qlib/FreqAI/ML4T (Alpha158 en ranking, TopkDropout, IC, Sharpe deflactado); mejor candidato "en observación" |
 | `bots/xs_daily/` | Bot nuevo cross-sectional diario, SOLO paper (entrenar, ejecutar a diario, simulación de prueba) |
+| `backtesting/download_derivs.py`, `download_binance_metrics.py`, `derivs_features.py`, `funding_arb.py`, `universe_symbols.txt` | Funding y open interest: descarga, características sin fuga de información, arbitraje de funding (Hummingbot) y carry; resultado real pendiente de datos |
 | `backtesting/trend_following.py` | Seguimiento de tendencia (Donchian + trailing), candidata evaluada por el selector |
 | `bots/master_trading_bot.py` | Bot de investigación: indicadores + (opcional) decisión real del Cerebro RL con velas 5m |
 | `bots/cerebro_rl/`, `bots/techosuelo/`, `bots/sesion_cerebro_db.py` | Copias de referencia del código original (no incluyen `trading_engine.py` ni los `main_*`, así que no se ejecutan solas) |
@@ -64,6 +65,9 @@ python backtesting/ml_daily_xs_v2.py                              # variantes A.
 python bots/xs_daily/train.py                                     # entrena el modelo del bot nuevo
 python bots/xs_daily/run_paper.py                                 # una ejecución diaria en paper (Binance por defecto; --exchange okx)
 python bots/xs_daily/test_paper_sim.py                            # simulación día a día con velas reales
+python backtesting/test_derivs_features.py                        # pruebas anti-fuga de funding/OI
+python backtesting/funding_arb.py --selftest                      # autotest del arbitraje de funding
+python backtesting/ml_daily_xs_v2.py --derivs derivs_*.pkl --variants E,F,O,FO   # con datos reales de funding/OI
 python bots/test_master_bot.py                                    # tests del bot con selecciones fabricadas
 ```
 

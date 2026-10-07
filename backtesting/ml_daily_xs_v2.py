@@ -106,8 +106,28 @@ def to_rank(F):
     return {k: (v if k in MARKET_LEVEL else v.rank(axis=1, pct=True)) for k, v in F.items() if k not in MARKET_LEVEL}
 
 
-def make_variants(Fbase, Falpha):
-    return {
+def load_derivs(paths):
+    """Une varios pickles de download_derivs.py: por tipo (funding / oi) y símbolo manda el primer archivo que lo tenga."""
+    import pickle
+    fund, oi = {}, {}
+    for p in paths or []:
+        d = pickle.load(open(p, "rb"))
+        for k, v in d.get("funding", {}).items():
+            fund.setdefault(k, v)
+        for k, v in d.get("oi", {}).items():
+            oi.setdefault(k, v)
+    return fund, oi
+
+
+def make_variants(Fbase, Falpha, Ff=None, Fo=None):
+    extra = {}
+    if Ff:
+        extra["F"] = (to_rank({**Fbase, **Falpha, **Ff}), "rank", "cohort")
+    if Fo:
+        extra["O"] = (to_rank({**Fbase, **Falpha, **Fo}), "rank", "cohort")
+    if Ff and Fo:
+        extra["FO"] = (to_rank({**Fbase, **Falpha, **Ff, **Fo}), "rank", "cohort")
+    return {**extra,
         "A": (Fbase, "demean", "cohort"), "B": (Falpha, "demean", "cohort"),
         "C": (to_rank(Fbase), "rank", "cohort"), "D": (to_rank(Falpha), "rank", "cohort"),
         "E": (to_rank({**Fbase, **Falpha}), "rank", "cohort"),
@@ -314,6 +334,8 @@ def main():
     ap.add_argument("--plant", type=float, default=0.0)
     ap.add_argument("--stable", action="store_true")
     ap.add_argument("--liq", type=float, default=0.30)
+    ap.add_argument("--derivs", nargs="+", default=None, help="pickles de download_derivs.py (funding / open interest)")
+    ap.add_argument("--oi-lag", type=int, default=1, help="días de retraso del OI (1 = seguro; 0 solo si la foto es instantánea)")
     ap.add_argument("--betaneutral", action="store_true", help="patas dimensionadas para beta neto cero")
     ap.add_argument("--save", default=None, help="guardar las cohortes en este CSV")
     ap.add_argument("--kfrac", type=float, default=None, help="K = fracción de símbolos válidos por lado (p.ej. 0.12)")
@@ -331,12 +353,22 @@ def main():
     BETA = Fbase["beta60"].to_numpy()
     quote30 = (P["close"] * P["volume"]).rolling(30).mean()
     liq_ok = (quote30.rank(axis=1, pct=True) >= a.liq).to_numpy()
-    specs = make_variants(Fbase, Falpha)
+    Ff, Fo = {}, {}
+    if a.derivs:
+        import derivs_features as dfe
+        fund, oi = load_derivs(a.derivs)
+        Ff, Fo = dfe.build(P, idx, fund, oi, a.oi_lag)
+        cov = {k: int(v.notna().any().sum()) for k, v in {**Ff, **Fo}.items() if k in ("fund_7d", "oi_chg7")}
+        first = {k: str(v.notna().sum(axis=1).gt(20).idxmax().date()) for k, v in {**Ff, **Fo}.items() if k in ("fund_7d", "oi_chg7")}
+        print(f"derivados: funding {len(fund)} símbolos, OI {len(oi)} | símbolos con dato: {cov} | primer día con >20 símbolos: {first}", flush=True)
+    specs = make_variants(Fbase, Falpha, Ff or None, Fo or None)
     print(f"símbolos={len(uni)} días={len(idx)} | features base={len(Fbase)} alpha={len(Falpha)} | K={K} n_drop={N_DROP} | "
           f"costo ida/vuelta {RT:.2%} | listo en {time.time()-t0:.0f}s", flush=True)
     tag = "SHUFFLE" if a.shuffle else ("PLANT" if a.plant else "REAL")
+    results = {}
     for v in a.variants.split(","):
         r = evaluate(v, specs[v], P, idx, liq_ok, a.shuffle, a.plant)
+        results[v] = r
         unit = "por cohorte 7d" if r["port"] == "cohort" else "por día"
         print(f"\n[{tag}] {v:2s} ({r['port']}): n={r['n']} IC={r['ic']:+.3f} [{r['ic_lo']:+.3f},{r['ic_hi']:+.3f}] ICIR={r['icir']:+.2f} | "
               f"bruto={r['gross']:+.3%} neto={r['net']:+.3%} {unit} IC95%[{r['ci_lo']:+.3%},{r['ci_hi']:+.3%}] Sharpe={r['sharpe']:+.2f} "
@@ -361,6 +393,22 @@ def main():
             r["df"].to_csv(a.save.replace(".csv", f"_{v}.csv"), index=False)
         if r["new_n"]:
             print(f"      DATOS NUEVOS (antes de {NEW_DATA_CUTOFF}, nunca usados): n={r['new_n']} neto={r['new_net']:+.3%} IC95%[{r['new_ci'][0]:+.3%},{r['new_ci'][1]:+.3%}]")
+    if "E" in results:                         # comparación pareada contra E sobre las mismas fechas (con datos de derivados)
+        first_day = None
+        if Ff or Fo:
+            cnt = sum(((F_[k].notna().sum(axis=1) > 20) for F_ in (Ff, Fo) for k in F_ if k in ("fund_7d", "oi_chg7")))
+            first_day = (cnt > 0).idxmax() + pd.Timedelta(days=45) if (cnt > 0).any() else None
+        for v in [x for x in results if x in ("F", "O", "FO")]:
+            A = results["E"]["df"].set_index("entry_ts").net; B = results[v]["df"].set_index("entry_ts").net
+            common = A.index.intersection(B.index)
+            if first_day is not None:
+                common = common[common >= first_day]
+            if len(common) > 30:
+                d = (B.loc[common] - A.loc[common]).to_numpy()
+                lo, hi = block_ci(d, 7)
+                print(f"\nPAREADO {v} - E sobre {len(common)} cohortes desde {common.min().date()}: diferencia media {d.mean():+.3%} "
+                      f"IC95%[{lo:+.3%},{hi:+.3%}] | neto E={A.loc[common].mean():+.3%} {v}={B.loc[common].mean():+.3%}"
+                      f" | {'MEJORA significativa' if lo > 0 else ('EMPEORA significativamente' if hi < 0 else 'diferencia no significativa')}")
     print(f"\ntotal {time.time()-t0:.0f}s")
 
 

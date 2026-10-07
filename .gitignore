@@ -9,3 +9,5 @@ bots/xs_daily/model_xs_D.pkl
 bots/xs_daily/paper_state.json
 bots/xs_daily/paper_log.csv
 data/ohlcv_daily_long.pkl
+derivs*.pkl
+metrics_cache/

@@ -224,6 +224,21 @@ Por año (variante D, neto por cohorte): 2022 +0.47% (mercado -1.91%), 2023 **-0
 
 **Selector con el historial largo** (`python backtesting/selector.py --daily-data data/ohlcv_daily_long.pkl`): ninguna estrategia aprobada ni en observación. Las variantes D y E quedan rechazadas (neto tras recorte +0.11%, IC95% inferior -0.42%; periodos 2, 3, 5 y 10 negativos). Las tres pruebas de robustez tampoco superan la barrera.
 
+## 12. Funding y open interest: herramientas listas, resultado real pendiente de datos
+
+**Código de GitHub revisado** (estrellas verificadas en cada página): [hummingbot](https://github.com/hummingbot/hummingbot) 20.3k, [cryptofeed](https://github.com/bmoscon/cryptofeed) 2.9k (canales FUNDING, OPEN_INTEREST y LIQUIDATIONS), [binance-public-data](https://github.com/binance/binance-public-data) 2.5k (su README solo documenta trades y velas; no confirma OI ni funding).
+- De Hummingbot (`scripts/v2_funding_rate_arb.py`): funding normalizado a base diaria, entrada cuando la diferencia entre exchanges supera un umbral, salida por take profit (PnL + funding cobrado), por inversión de la diferencia o por triple barrera, y comisiones de ambas patas descontadas de la rentabilidad. Implementado en `funding_arb.py` (modo `cross`) con costo de 4 patas.
+- De cryptofeed: qué canales existen (funding, OI, liquidaciones) para decidir qué descargar.
+
+**Qué se construyó** (probado con datos sintéticos y exchanges simulados; no se ha corrido contra las APIs reales ni con datos reales de OI):
+- `download_derivs.py`: funding + OI diario por ccxt (Bybit, Binance, OKX). `download_binance_metrics.py`: OI diario desde los archivos públicos de Binance, con `--probe` que comprueba si existen y se leen antes de la descarga masiva.
+- `derivs_features.py`: características de funding (suma diaria, medias, z-score, cambio, fracción de días positivos) y de OI (cambios 1/7/30 días, z-score, OI/volumen, divergencia OI-precio). Alineación anti-sesgo con 11 pruebas: modificar datos posteriores a t no cambia ninguna característica hasta t; el OI se retrasa un día por seguridad.
+- `ml_daily_xs_v2.py --derivs ...`: variantes F (funding), O (OI) y FO, comparadas de forma **pareada** contra E (mismo modelo sin derivados) sobre las mismas fechas.
+- `selector.py --derivs ...`: una variante con derivados solo se aprueba si pasa la puerta Y mejora a E de forma significativa.
+- `funding_arb.py`: arbitraje de funding entre exchanges (estilo Hummingbot) y carry sin base spot (cota superior). Autotest: diferencia constante entra una vez y acumula lo esperado; sin diferencia no opera; una diferencia que se invierte cada 5 días pierde por costos.
+
+Controles del pipeline: con derivados sin información, F/O/FO no cambian el resultado de E (diferencia pareada -0.05% a 0.00%, no significativa) y el selector rechaza; con información plantada en el OI, la mejora pareada es +12.5% [+11.6%, +13.5%] y el selector aprueba. Es decir, si hay información real en el OI o el funding, el sistema la detectará; si no la hay, no inventará una ventaja.
+
 ## Limitaciones de este análisis
 
 Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos listados hoy (sesgo de supervivencia); sin funding ni profundidad del libro; los modelos pudieron entrenarse con parte de estos mismos datos.

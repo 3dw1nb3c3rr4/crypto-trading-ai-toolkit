@@ -13,7 +13,7 @@ Puerta (todas obligatorias):
 Resultado: strategy_selection.json (lo lee el bot). Si ninguna pasa, el bot no opera.
 
 Uso: python selector.py [--data ../data/okx_5m.pkl] [--funding funding_data.pkl --funding-key okx_funding --spot-key okx_spot_1h]
-                        [--skip familias,tendencia,techosuelo,cerebro,ml,xsdiario,xsv2,carry]
+                        [--skip familias,tendencia,techosuelo,cerebro,ml,xsdiario,xsv2,derivados,carry]
 """
 from __future__ import annotations
 
@@ -282,6 +282,44 @@ def eval_xs_v2(data=None):
     return out
 
 
+def eval_derivs(derivs_paths, data=None, oi_lag=1):
+    """Modelo cross-sectional diario con funding y/o OI (variantes F, O, FO de ml_daily_xs_v2), comparado de forma PAREADA con E
+    (mismo modelo sin derivados) sobre las mismas fechas. Para habilitarse debe superar la puerta y mejorar de forma significativa a E."""
+    import derivs_features as dfe
+    import ml_daily_xs as base_v1
+    import ml_daily_xs_v2 as v2
+    if data:
+        v2.KFRAC, base_v1.TEST_LEN = 0.12, 180
+    uni = load_universe_pkl(data or base_v1.DATA)
+    idx, P = base_v1.panels(uni)
+    Fbase, Falpha = base_v1.build_features(P), v2.alpha_features(P)
+    v2.BETA = Fbase["beta60"].to_numpy()
+    fund, oi = v2.load_derivs(derivs_paths)
+    Ff, Fo = dfe.build(P, idx, fund, oi, oi_lag)
+    quote30 = (P["close"] * P["volume"]).rolling(30).mean()
+    liq_ok = (quote30.rank(axis=1, pct=True) >= 0.30).to_numpy()
+    specs = v2.make_variants(Fbase, Falpha, Ff or None, Fo or None)
+    runs = {v: v2.evaluate(v, specs[v], P, idx, liq_ok) for v in ("E", "F", "O", "FO") if v in specs}
+    out = []
+    for v, r in runs.items():
+        if v == "E":
+            continue
+        tr = r["df"][["entry_ts", "fold", "net"]].copy(); tr["entry_ts"] = pd.to_datetime(tr["entry_ts"], utc=True)
+        e = make_evidence(f"modelo:xs_v2_derivados_{v}", tr, notes=f"E + {'funding' if 'F' in v else ''}{' y ' if v == 'FO' else ''}{'OI' if 'O' in v else ''}", block=7)
+        A = runs["E"]["df"].set_index("entry_ts").net; B = r["df"].set_index("entry_ts").net
+        common = A.index.intersection(B.index)
+        d = (B.loc[common] - A.loc[common]).to_numpy()
+        lo, hi = v2.block_ci(d, 7)
+        e["robustness"] = [dict(name="mejora_pareada_vs_E", exp_net=float(d.mean()), ci_lo=float(lo), ci_hi=float(hi), n=int(len(d)))]
+        out.append(e)
+    return out
+
+
+def load_universe_pkl(path):
+    from engine import load_universe
+    return load_universe(path, min_bars=150)
+
+
 def eval_carry(funding_path, key, spot_key):
     import funding_carry as fc
     funding, prices, spot = fc.load_inputs(funding_path, key, os.path.join(ROOT, "data", "okx_5m.pkl"), spot_key)
@@ -320,6 +358,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=os.path.join(ROOT, "data", "okx_5m.pkl"))
     ap.add_argument("--daily-data", default=None, help="pickle diario largo para el modelo cross-sectional (colab/celda_historia_diaria.py)")
+    ap.add_argument("--derivs", nargs="+", default=None, help="pickles de download_derivs.py / download_binance_metrics.py (funding y OI)")
     ap.add_argument("--funding", default=None)
     ap.add_argument("--funding-key", default=None)
     ap.add_argument("--spot-key", default=None)
@@ -329,6 +368,8 @@ def main():
     skip = set(x for x in a.skip.split(",") if x)
     jobs = [("familias", eval_familias), ("tendencia", eval_tendencia), ("techosuelo", eval_techosuelo),
             ("cerebro", lambda: eval_cerebro(a.data)), ("ml", lambda: eval_ml(a.data)), ("xsdiario", lambda: eval_daily_xs(a.daily_data)), ("xsv2", lambda: eval_xs_v2(a.daily_data))]
+    if a.derivs:
+        jobs.append(("derivados", lambda: eval_derivs(a.derivs, a.daily_data)))
     if a.funding:
         jobs.append(("carry", lambda: eval_carry(a.funding, a.funding_key, a.spot_key)))
     if a.daily_data:               # el evaluador v1 (K fijo, 2 años) queda reemplazado por el v2 con el historial largo
