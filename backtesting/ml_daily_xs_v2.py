@@ -35,6 +35,8 @@ import ml_daily_xs as base  # noqa: E402
 from engine import Costs, load_universe  # noqa: E402
 
 H, K, N_DROP = 7, 10, 2
+BETA_NEUTRAL = False    # dimensiona las patas para que beta_largos * w_largos = beta_cortos * w_cortos
+BETA = None             # matriz (T, S) de beta60 de cada símbolo (se asigna en main / run_named)
 KFRAC = None            # si se define, K = 12% de los símbolos válidos cada día (universos que cambian de tamaño)
 NEW_DATA_CUTOFF = "2024-09-05"   # todo lo anterior nunca se usó en análisis previos (el cache de 2 años empieza aquí)
 
@@ -161,9 +163,14 @@ def cohort_returns(PRED, fwd, folds, idx):
         k = kk(len(v))
         o_ = v[np.argsort(p[v])]
         lr, sr = np.mean(fwd[t][o_[-k:]]), np.mean(fwd[t][o_[:k]])
-        g = 0.5 * lr - 0.5 * sr
-        rows.append((idx[t + 1], folds[t], g, g - RT, float(np.mean(fwd[t][v])), k, len(v)))
-    return pd.DataFrame(rows, columns=["entry_ts", "fold", "gross", "net", "mkt", "k", "nvalid"])
+        wl = 0.5
+        if BETA_NEUTRAL and BETA is not None:
+            bl = np.clip(np.nanmean(BETA[t][o_[-k:]]), 0.2, 3.0); bs = np.clip(np.nanmean(BETA[t][o_[:k]]), 0.2, 3.0)
+            if np.isfinite(bl) and np.isfinite(bs):
+                wl = bs / (bl + bs)          # beta_largos*wl = beta_cortos*(1-wl)
+        g = wl * lr - (1 - wl) * sr
+        rows.append((idx[t + 1], folds[t], g, g - RT, float(np.mean(fwd[t][v])), k, len(v), wl))
+    return pd.DataFrame(rows, columns=["entry_ts", "fold", "gross", "net", "mkt", "k", "nvalid", "w_long"])
 
 
 def dropout_returns(PRED, P, folds, idx):
@@ -249,11 +256,23 @@ def evaluate(variant_name, spec, P, idx, liq_ok, shuffle=False, plant=0.0, seed=
     sharpe = df.net.mean() / df.net.std() * np.sqrt(per_year)
     byf = df.groupby("fold").net.mean()
     eq = np.cumprod(1 + daily_equiv); dd = float((eq / np.maximum.accumulate(eq) - 1).min())
+    reg = None
+    if "mkt" in df and port == "cohort":
+        x, y_ = df.mkt.to_numpy(), df.net.to_numpy()
+        b_, a_ = np.polyfit(x, y_, 1)
+        rr = np.random.default_rng(0)
+        nb = len(y_) // 7
+        bs_ = []
+        for _ in range(1500):
+            ii = np.concatenate([np.arange(j * 7, j * 7 + 7) for j in rr.integers(0, nb, nb)])
+            bb, aa = np.polyfit(x[ii], y_[ii], 1); bs_.append((aa, bb))
+        bs_ = np.array(bs_)
+        reg = dict(alpha=a_, beta=b_, alpha_ci=np.percentile(bs_[:, 0], [2.5, 97.5]), beta_ci=np.percentile(bs_[:, 1], [2.5, 97.5]))
     yr = df.groupby(pd.DatetimeIndex(df.entry_ts).year).agg(n=("net", "size"), net=("net", "mean"),
                                                            mkt=("mkt", "mean") if "mkt" in df else ("net", "size"))
     new = df[pd.DatetimeIndex(df.entry_ts) < pd.Timestamp(NEW_DATA_CUTOFF, tz="UTC")]
     new_ci = block_ci(new.net.to_numpy(), step) if len(new) > 4 * step else (np.nan, np.nan)
-    return dict(yearly=yr, new_n=len(new), new_net=float(new.net.mean()) if len(new) else np.nan, new_ci=new_ci,
+    return dict(reg=reg, yearly=yr, new_n=len(new), new_net=float(new.net.mean()) if len(new) else np.nan, new_ci=new_ci,
                 name=variant_name, port=port, n=len(df), ic=ic, icir=icir, ic_lo=ic_lo, ic_hi=ic_hi,
                 gross=df.gross.mean(), net=df.net.mean(), ci_lo=lo, ci_hi=hi, sharpe=sharpe,
                 folds=[float(x) for x in byf.values], maxdd=dd, dsr20=dsr(df.net.to_numpy(), 20),
@@ -285,17 +304,21 @@ def main():
     ap.add_argument("--plant", type=float, default=0.0)
     ap.add_argument("--stable", action="store_true")
     ap.add_argument("--liq", type=float, default=0.30)
+    ap.add_argument("--betaneutral", action="store_true", help="patas dimensionadas para beta neto cero")
+    ap.add_argument("--save", default=None, help="guardar las cohortes en este CSV")
     ap.add_argument("--kfrac", type=float, default=None, help="K = fracción de símbolos válidos por lado (p.ej. 0.12)")
     ap.add_argument("--test-len", type=int, default=90, help="días por periodo de prueba (reentrena en cada uno)")
     ap.add_argument("--stable-bars", type=int, default=700, help="velas mínimas para --stable")
     a = ap.parse_args()
     t0 = time.time()
-    global KFRAC
+    global KFRAC, BETA_NEUTRAL, BETA
     KFRAC = a.kfrac
+    BETA_NEUTRAL = a.betaneutral
     base.TEST_LEN = a.test_len
     uni = load_universe(a.data, min_bars=a.stable_bars if a.stable else 150)
     idx, P = base.panels(uni)
     Fbase, Falpha = base.build_features(P), alpha_features(P)
+    BETA = Fbase["beta60"].to_numpy()
     quote30 = (P["close"] * P["volume"]).rolling(30).mean()
     liq_ok = (quote30.rank(axis=1, pct=True) >= a.liq).to_numpy()
     specs = make_variants(Fbase, Falpha)
@@ -314,6 +337,13 @@ def main():
             print("      por año:", " | ".join(f"{y}: neto {row.net:+.2%} mercado {row.mkt:+.2%} (n={int(row.n)})" for y, row in r["yearly"].iterrows()))
         else:
             print("      por año:", " | ".join(f"{y}: neto {row.net:+.3%}/día (n={int(row.n)})" for y, row in r["yearly"].iterrows()))
+        if r["reg"]:
+            g = r["reg"]
+            print(f"      REGRESIÓN contra el mercado: beta={g['beta']:+.3f} [{g['beta_ci'][0]:+.3f},{g['beta_ci'][1]:+.3f}] | "
+                  f"alfa={g['alpha']:+.3%} por cohorte IC95%[{g['alpha_ci'][0]:+.3%},{g['alpha_ci'][1]:+.3%}]"
+                  + (f" | peso medio de largos {r['df'].w_long.mean():.2f}" if BETA_NEUTRAL else ""))
+        if a.save:
+            r["df"].to_csv(a.save.replace(".csv", f"_{v}.csv"), index=False)
         if r["new_n"]:
             print(f"      DATOS NUEVOS (antes de {NEW_DATA_CUTOFF}, nunca usados): n={r['new_n']} neto={r['new_net']:+.3%} IC95%[{r['new_ci'][0]:+.3%},{r['new_ci'][1]:+.3%}]")
     print(f"\ntotal {time.time()-t0:.0f}s")

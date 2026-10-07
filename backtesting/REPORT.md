@@ -192,6 +192,23 @@ Advertencias: el Sharpe deflactado de la serie diaria (Ed) es 0.58 con 20 prueba
 
 **Bot nuevo** (`bots/xs_daily/`, solo paper): entrena la variante D, abre cada día una cohorte de 10 long y 10 short con 1/7 del capital, la cierra a los 7 días y ejecuta al precio en vivo (ask/bid + slippage + comisión). Solo corre si la estrategia está aprobada o en observación. Simulación día a día con velas reales y modelo entrenado solo hasta el 31-may-2026: 89 cohortes, 0 errores de contabilidad, +1.53% por cohorte fuera de muestra, 71% positivas, $1,000 → $1,198 realizados (jun-sep 2026, mismo periodo bajista que el último tramo del walk-forward).
 
+## 11. Confirmación con 6 años de historia (2020-10 a 2026-10, 105 a 135 símbolos)
+
+Archivo: `colab/celda_historia_diaria.py` (OKX, velas diarias, sin huecos). Mismo walk-forward, ahora con reentrenamiento cada 180 días (11 periodos), K = 12% de los símbolos válidos por lado y costo 0.14% por cohorte. Todo lo anterior a 2024-09-05 es **dato nunca usado** en análisis previos.
+
+| Variante | IC | Neto por cohorte | IC95% | Sharpe | Caída máx. | Datos nuevos (< sep-2024) |
+|---|---|---|---|---|---|---|
+| A (features base, referencia) | 0.057 | +0.25% | [-0.29%, +0.76%] | 0.30 | -54% | -0.30% [-1.09%, +0.39%] |
+| D (Alpha158 en ranking) | 0.132 | +0.26% | [-0.27%, +0.78%] | 0.30 | -51% | +0.07% [-0.72%, +0.84%] |
+| E (base+Alpha158 en ranking) | 0.141 | +0.26% | [-0.30%, +0.78%] | 0.29 | -42% | +0.02% [-0.78%, +0.83%] |
+| Ed (E con TopkDropout) | 0.141 | +0.025% por día | [-0.08%, +0.12%] | 0.24 | -69% | -0.04% por día [-0.17%, +0.08%] |
+
+Control con etiquetas barajadas (6 años): IC ≈ 0, neto -0.25% / -0.23%, datos nuevos -0.19% / -0.06%. No hay fuga de información.
+
+Por año (variante D, neto por cohorte): 2022 +0.47% (mercado -1.91%), 2023 **-0.68%** (mercado +1.86%), 2024 +0.37%, 2025 +0.88% (mercado -1.64%), 2026 +0.26%.
+
+**Conclusión:** el resultado de +0.8% a +1.0% de los 2 años recientes no se sostiene en 6 años. El IC sigue siendo positivo (0.13 a 0.14: el modelo ordena mejor que el azar), pero la cartera long/short de los extremos solo rinde ~+0.26% por cohorte, sin significancia, con caídas de -40% a -69%; el segmento anterior a sep-2024 es estadísticamente cero. Las variantes quedan **rechazadas** por el selector con estos datos. El patrón por año (gana en mercados bajistas, pierde en el alcista de 2023) sugiere dependencia del régimen.
+
 ## Limitaciones de este análisis
 
 Velas diarias (no 5m); solo 2 años y un ciclo de mercado; universo de símbolos listados hoy (sesgo de supervivencia); sin funding ni profundidad del libro; los modelos pudieron entrenarse con parte de estos mismos datos.
