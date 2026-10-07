@@ -154,7 +154,8 @@ def predict_walk_forward(F, fwd, ylab, liq_ok, shuffle, plant, rng):
     return PRED, folds
 
 
-def cohort_returns(PRED, fwd, folds, idx):
+def cohort_returns(PRED, fwd, folds, idx, neutral=None):
+    neutral = BETA_NEUTRAL if neutral is None else neutral
     rows = []
     for t in np.where(folds > 0)[0]:
         p = PRED[t]; v = np.where(np.isfinite(p) & np.isfinite(fwd[t]))[0]
@@ -164,7 +165,7 @@ def cohort_returns(PRED, fwd, folds, idx):
         o_ = v[np.argsort(p[v])]
         lr, sr = np.mean(fwd[t][o_[-k:]]), np.mean(fwd[t][o_[:k]])
         wl = 0.5
-        if BETA_NEUTRAL and BETA is not None:
+        if neutral and BETA is not None:
             bl = np.clip(np.nanmean(BETA[t][o_[-k:]]), 0.2, 3.0); bs = np.clip(np.nanmean(BETA[t][o_[:k]]), 0.2, 3.0)
             if np.isfinite(bl) and np.isfinite(bs):
                 wl = bs / (bl + bs)          # beta_largos*wl = beta_cortos*(1-wl)
@@ -237,6 +238,19 @@ def block_ci(vals, step, n=3000, seed=0):
     return np.percentile(m, [2.5, 97.5])
 
 
+def regress_mkt(df):
+    x, y_ = df.mkt.to_numpy(), df.net.to_numpy()
+    b_, a_ = np.polyfit(x, y_, 1)
+    rr = np.random.default_rng(0)
+    nb = len(y_) // 7
+    bs_ = []
+    for _ in range(1500):
+        ii = np.concatenate([np.arange(j * 7, j * 7 + 7) for j in rr.integers(0, nb, nb)])
+        bb, aa = np.polyfit(x[ii], y_[ii], 1); bs_.append((aa, bb))
+    bs_ = np.array(bs_)
+    return dict(alpha=a_, beta=b_, alpha_ci=np.percentile(bs_[:, 0], [2.5, 97.5]), beta_ci=np.percentile(bs_[:, 1], [2.5, 97.5]))
+
+
 def evaluate(variant_name, spec, P, idx, liq_ok, shuffle=False, plant=0.0, seed=1):
     F, lab, port = spec
     fwd_df, ylab = labels(P, lab)
@@ -256,23 +270,17 @@ def evaluate(variant_name, spec, P, idx, liq_ok, shuffle=False, plant=0.0, seed=
     sharpe = df.net.mean() / df.net.std() * np.sqrt(per_year)
     byf = df.groupby("fold").net.mean()
     eq = np.cumprod(1 + daily_equiv); dd = float((eq / np.maximum.accumulate(eq) - 1).min())
-    reg = None
-    if "mkt" in df and port == "cohort":
-        x, y_ = df.mkt.to_numpy(), df.net.to_numpy()
-        b_, a_ = np.polyfit(x, y_, 1)
-        rr = np.random.default_rng(0)
-        nb = len(y_) // 7
-        bs_ = []
-        for _ in range(1500):
-            ii = np.concatenate([np.arange(j * 7, j * 7 + 7) for j in rr.integers(0, nb, nb)])
-            bb, aa = np.polyfit(x[ii], y_[ii], 1); bs_.append((aa, bb))
-        bs_ = np.array(bs_)
-        reg = dict(alpha=a_, beta=b_, alpha_ci=np.percentile(bs_[:, 0], [2.5, 97.5]), beta_ci=np.percentile(bs_[:, 1], [2.5, 97.5]))
+    reg = regress_mkt(df) if ("mkt" in df and port == "cohort") else None
+    plain = None
+    if BETA_NEUTRAL and port == "cohort":                       # misma predicción, cartera NO neutral, para comparar
+        dfp = cohort_returns(PRED, fwd, folds, idx, neutral=False)
+        plain = dict(reg=regress_mkt(dfp), net=dfp.net.mean(), ci=block_ci(dfp.net.to_numpy(), 7), df=dfp,
+                     yearly=dfp.groupby(pd.DatetimeIndex(dfp.entry_ts).year).agg(n=("net", "size"), net=("net", "mean"), mkt=("mkt", "mean")))
     yr = df.groupby(pd.DatetimeIndex(df.entry_ts).year).agg(n=("net", "size"), net=("net", "mean"),
                                                            mkt=("mkt", "mean") if "mkt" in df else ("net", "size"))
     new = df[pd.DatetimeIndex(df.entry_ts) < pd.Timestamp(NEW_DATA_CUTOFF, tz="UTC")]
     new_ci = block_ci(new.net.to_numpy(), step) if len(new) > 4 * step else (np.nan, np.nan)
-    return dict(reg=reg, yearly=yr, new_n=len(new), new_net=float(new.net.mean()) if len(new) else np.nan, new_ci=new_ci,
+    return dict(plain=plain, reg=reg, yearly=yr, new_n=len(new), new_net=float(new.net.mean()) if len(new) else np.nan, new_ci=new_ci,
                 name=variant_name, port=port, n=len(df), ic=ic, icir=icir, ic_lo=ic_lo, ic_hi=ic_hi,
                 gross=df.gross.mean(), net=df.net.mean(), ci_lo=lo, ci_hi=hi, sharpe=sharpe,
                 folds=[float(x) for x in byf.values], maxdd=dd, dsr20=dsr(df.net.to_numpy(), 20),
@@ -342,6 +350,11 @@ def main():
             print(f"      REGRESIÓN contra el mercado: beta={g['beta']:+.3f} [{g['beta_ci'][0]:+.3f},{g['beta_ci'][1]:+.3f}] | "
                   f"alfa={g['alpha']:+.3%} por cohorte IC95%[{g['alpha_ci'][0]:+.3%},{g['alpha_ci'][1]:+.3%}]"
                   + (f" | peso medio de largos {r['df'].w_long.mean():.2f}" if BETA_NEUTRAL else ""))
+        if r.get("plain"):
+            g, pl = r["plain"]["reg"], r["plain"]
+            print(f"      (misma predicción SIN neutralizar beta: neto {pl['net']:+.3%} IC95%[{pl['ci'][0]:+.3%},{pl['ci'][1]:+.3%}] | "
+                  f"beta={g['beta']:+.3f} [{g['beta_ci'][0]:+.3f},{g['beta_ci'][1]:+.3f}] alfa={g['alpha']:+.3%} [{g['alpha_ci'][0]:+.3%},{g['alpha_ci'][1]:+.3%}])")
+            print("      por año SIN neutralizar:", " | ".join(f"{y}: {row.net:+.2%} (mercado {row.mkt:+.2%})" for y, row in pl["yearly"].iterrows()))
         if a.save:
             r["df"].to_csv(a.save.replace(".csv", f"_{v}.csv"), index=False)
         if r["new_n"]:
