@@ -208,9 +208,9 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
       <div class="cols"><div><label>Tope por orden demo/real (USDT)</label><input id="c-max_position_usdt" type="number"></div><div><label>Margen</label><select id="c-margin_mode"><option value="isolated">Aislado</option><option value="cross">Cruzado</option></select></div></div>
     </div>
   </div>
-  <div class="h">Claves API (solo para DEMO o REAL)</div>
+  <div class="h">Claves API · en modo PAPER solo se usan para LEER datos de tu cuenta (comisiones, escalones), nunca para operar</div>
   <div class="cols">
-    <div><label>Para</label><select id="k-mode"><option value="demo">Cuenta DEMO</option><option value="real">Cuenta REAL</option></select></div>
+    <div><label>Para</label><select id="k-mode"><option value="real">Claves de tu cuenta Binance (lectura en PAPER)</option><option value="demo">Claves de la cuenta DEMO del exchange</option></select></div>
     <div><label>Estado</label><div id="k-status" class="muted" style="padding:7px 0">–</div></div>
     <div><label>API key</label><input id="k-key" autocomplete="off"></div>
     <div><label>Secret</label><input id="k-secret" type="password" autocomplete="off"></div>
@@ -714,7 +714,7 @@ const CK = ["exchange", "mode", "universe", "bot_variant", "bot_capital", "manua
 async function openCfg() {
   const r = await api("/api/config"); $("#cfgdir").textContent = r.config_dir;
   for (const k of CK) { const i = $("#c-" + k); i.value = PCTK.includes(k) ? +(r.cfg[k] * 100).toFixed(4) : r.cfg[k]; }
-  $("#k-mode").value = r.cfg.mode === "real" ? "real" : "demo";
+  $("#k-mode").value = r.cfg.mode === "demo" ? "demo" : "real";
   const ks = () => { const s = $("#k-mode").value === "real" ? r.keys_real : r.keys_demo; $("#k-status").innerHTML = s.saved ? `<span class="pos">guardadas</span> (${s.hint}) · ${s.backend}` : '<span class="muted">sin claves</span>'; };
   ks(); $("#k-mode").onchange = ks;
   $("#c-confirm").value = ""; $("#realconfirm").style.display = "none";
