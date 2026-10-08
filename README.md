@@ -26,7 +26,7 @@ Windows sin Git: descarga el ZIP de la rama desde GitHub y descomprímelo. Si `t
 | `backtesting/selector.py`, `strategy_selection.json` | Selector: evalúa cada estrategia con una puerta estricta fuera de muestra y con costos; el bot solo opera las aprobadas (hoy: ninguna) |
 | `backtesting/ml_daily_xs.py`, `colab/celda_historia_diaria.py` | Modelo cross-sectional diario (117 símbolos) y descarga de ~6 años de velas diarias para confirmarlo; hoy "en observación" |
 | `backtesting/ml_daily_xs_v2.py` | Ideas de Qlib/FreqAI/ML4T (Alpha158 en ranking, TopkDropout, IC, Sharpe deflactado); mejor candidato "en observación" |
-| `bots/xs_daily/` | Bot nuevo cross-sectional diario, SOLO paper (entrenar, ejecutar a diario, simulación de prueba) |
+| `bots/xs_daily/` | Bot nuevo cross-sectional diario, SOLO paper (entrenar, ejecutar a diario, simulación de prueba). `panel.py`: panel gráfico (tkinter + matplotlib) con curva de equity, posiciones con precios en vivo, señales y botones |
 | `backtesting/download_derivs.py`, `download_binance_metrics.py`, `derivs_features.py`, `funding_arb.py`, `universe_symbols.txt` | Funding y open interest: descarga, características sin fuga de información, arbitraje de funding (Hummingbot) y carry; resultado real pendiente de datos |
 | `colab/celda_derivados.py` | Celda única de Colab: funding y open interest de OKX (API) y de Binance (archivos públicos), con reporte de cobertura |
 | `backtesting/kronos_features.py`, `colab/celda_kronos.py` | Pronósticos del modelo fundacional Kronos (shiyu-coder/Kronos) como características (variante K = E + Kronos); pipeline probado con un predictor simulado, **sin probar aún con los pesos reales** |
@@ -65,6 +65,7 @@ python backtesting/selector.py --funding funding_data.pkl --funding-key okx_fund
 python backtesting/ml_daily_xs.py                                 # modelo diario (--shuffle / --plant 6 / --stable / --liq 0.5 / --data <pkl largo>)
 python backtesting/ml_daily_xs_v2.py                              # variantes A..Ed (--shuffle / --plant 6 / --stable / --liq 0.5)
 python bots/xs_daily/train.py                                     # entrena el modelo del bot nuevo
+python bots/xs_daily/panel.py                                     # panel gráfico del bot paper (pip install matplotlib)
 python bots/xs_daily/run_paper.py                                 # una ejecución diaria en paper (Binance por defecto; --exchange okx)
 python bots/xs_daily/test_paper_sim.py                            # simulación día a día con velas reales
 python backtesting/test_derivs_features.py                        # pruebas anti-fuga de funding/OI
