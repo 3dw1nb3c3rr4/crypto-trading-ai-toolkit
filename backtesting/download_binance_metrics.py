@@ -8,6 +8,7 @@ Reanuda solo (cache por símbolo en --cache). Salida compatible con ml_daily_xs_
 Probado con respuestas simuladas; la existencia y el formato reales los verifica --probe (sin eso, no se asume nada).
 """
 import argparse
+import time
 import concurrent.futures as cf
 import datetime as dt
 import io
@@ -51,15 +52,22 @@ def parse_funding_zip(blob):
     return pd.DataFrame({"ts": to_ms(df[tcol]), "rate": df[rcol].astype(float)})
 
 
-def http_get(url, timeout=30):
-    """Devuelve (codigo, bytes|None). 404 = el archivo no existe (normal antes de la fecha de inicio del símbolo)."""
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=timeout) as r:
-            return r.status, r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, None
-    except Exception:
-        return 0, None
+def http_get(url, timeout=20, tries=3):
+    """Devuelve (codigo, bytes|None). 404 = el archivo no existe (normal antes de la fecha de inicio del símbolo).
+    Errores de red / 429 / 5xx se reintentan; si siguen fallando devuelve (0, None) y el llamador NO guarda caché."""
+    code = 0
+    for k in range(tries):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=timeout) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return 404, None
+            code = e.code
+        except Exception:
+            code = 0
+        time.sleep(1.5 * (k + 1))
+    return code or 0, None
 
 
 def parse_zip(blob):
@@ -125,11 +133,15 @@ def download_funding(symbols, start, end, out_dir, workers=16, get=None, log=pri
         path = os.path.join(out_dir, "fund_" + to_binance(sym) + ".pkl")
         if os.path.exists(path):
             result[sym] = pickle.load(open(path, "rb"))
+            log(f"{sym} funding: en caché")
             continue
         bs = to_binance(sym)
+        bad = []
 
         def one(ym):
             code, blob = get(funding_url(bs, *ym))
+            if code not in (200, 404):
+                bad.append(code)
             if code == 200 and blob:
                 try:
                     return parse_funding_zip(blob)
@@ -140,9 +152,10 @@ def download_funding(symbols, start, end, out_dir, workers=16, get=None, log=pri
             parts = [p for p in ex.map(one, months) if p is not None and len(p)]
         df = (pd.concat(parts).drop_duplicates("ts").sort_values("ts").reset_index(drop=True) if parts
               else pd.DataFrame(columns=["ts", "rate"]))
-        pickle.dump(df, open(path, "wb"))
+        if not bad:                                       # con fallos de red NO se guarda caché (se reintenta al volver a ejecutar)
+            pickle.dump(df, open(path, "wb"))
         result[sym] = df
-        log(f"{sym} funding: {len(df)} liquidaciones" + (f" ({pd.to_datetime(df.ts.iloc[0], unit='ms', utc=True):%Y-%m-%d} -> "
+        log(f"{sym} funding:{' [' + str(len(bad)) + ' ARCHIVOS CON ERROR DE RED, sin caché]' if bad else ''} {len(df)} liquidaciones" + (f" ({pd.to_datetime(df.ts.iloc[0], unit='ms', utc=True):%Y-%m-%d} -> "
                                                        f"{pd.to_datetime(df.ts.iloc[-1], unit='ms', utc=True):%Y-%m-%d})" if len(df) else " (sin archivos)"))
     return {s: d for s, d in result.items() if len(d) > 10}
 
@@ -156,11 +169,15 @@ def download(symbols, start, end, out_dir, workers=16, get=None, log=print):
         path = os.path.join(out_dir, to_binance(sym) + ".pkl")
         if os.path.exists(path):
             result[sym] = pickle.load(open(path, "rb"))
+            log(f"{sym} OI: en caché")
             continue
         bs = to_binance(sym)
+        bad = []
 
         def one(day):
             code, blob = get(url_for(bs, day.date()))
+            if code not in (200, 404):
+                bad.append(code)
             if code == 200 and blob:
                 try:
                     return parse_zip(blob)
@@ -170,9 +187,10 @@ def download(symbols, start, end, out_dir, workers=16, get=None, log=print):
         with cf.ThreadPoolExecutor(workers) as ex:
             rows = [r for r in ex.map(one, days) if r]
         df = pd.DataFrame(rows, columns=["ts", "oi_amt", "oi_usd"]).drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
-        pickle.dump(df, open(path, "wb"))
+        if not bad:
+            pickle.dump(df, open(path, "wb"))
         result[sym] = df
-        log(f"{sym}: {len(df)} días con OI" + (f" ({pd.to_datetime(df.ts.iloc[0], unit='ms', utc=True):%Y-%m-%d} -> "
+        log(f"{sym}:{' [' + str(len(bad)) + ' ARCHIVOS CON ERROR DE RED, sin caché]' if bad else ''} {len(df)} días con OI" + (f" ({pd.to_datetime(df.ts.iloc[0], unit='ms', utc=True):%Y-%m-%d} -> "
                                               f"{pd.to_datetime(df.ts.iloc[-1], unit='ms', utc=True):%Y-%m-%d})" if len(df) else " (sin archivos)"))
     return {"funding": {}, "oi": {s: d for s, d in result.items() if len(d) > 10}, "meta": {"source": "data.binance.vision metrics"}}
 
