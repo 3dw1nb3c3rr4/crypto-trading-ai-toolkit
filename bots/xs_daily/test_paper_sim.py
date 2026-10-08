@@ -45,10 +45,17 @@ if __name__ == "__main__":
     ap.add_argument("--start", default="2026-06-01")
     ap.add_argument("--data", default=os.path.join(xs_core.ROOT, "data", "trading_history", "ohlcv_cache_2y.pkl"))
     ap.add_argument("--save", default=None, help="CSV con las cohortes cerradas")
+    ap.add_argument("--variant", default="D", choices=("D", "FO"))
+    ap.add_argument("--derivs", nargs="+", default=None, help="historial de funding/OI para FO")
     a = ap.parse_args()
     uni = load_universe(a.data, min_bars=150)
     train_uni = {s: df[df.ts < a.start].reset_index(drop=True) for s, df in uni.items()}
-    bundle = xs_core.train({s: d for s, d in train_uni.items() if len(d) >= 150})
+    derivs = None
+    if a.variant == "FO":
+        import derivs_live
+        derivs = derivs_live.load_seed(a.derivs)
+        print(f"derivados: funding {len(derivs[0])} símbolos, OI {len(derivs[1])}")
+    bundle = xs_core.train({s: d for s, d in train_uni.items() if len(d) >= 150}, a.variant, derivs)
     print(f"modelo entrenado hasta {bundle['trained_until']} con {bundle['n_rows']} filas (sin ver nada desde {a.start})")
     ex = FakeExchange(uni)
     days = pd.date_range(pd.Timestamp(a.start, tz="UTC"), max(df.ts.iloc[-1] for df in uni.values()), freq="D")
@@ -57,7 +64,7 @@ if __name__ == "__main__":
     for d in days:
         ex.now = int(d.value // 10**6)
         before = {c["opened"]: c for c in state["cohorts"]}
-        rp.step(state, ex, bundle, str(d.date()), log=lambda *x: None)
+        rp.step(state, ex, bundle, str(d.date()), log=lambda *x: None, derivs=derivs)   # derivs se alinean as-of a cada día
         # verificación independiente de cada cohorte cerrada hoy
         for c in state["closed"]:
             if c["closed"] != str(d.date()) or c["opened"] not in before:

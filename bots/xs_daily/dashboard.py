@@ -37,6 +37,7 @@ sys.path.insert(0, HERE)
 import config_local as cl  # noqa: E402
 import cuenta_paper as cp  # noqa: E402
 import cuenta_real as cr  # noqa: E402
+import derivs_live  # noqa: E402
 import funding_util  # noqa: E402
 import universo  # noqa: E402
 import xs_core  # noqa: E402
@@ -47,6 +48,21 @@ STATE = os.path.join(HERE, "paper_state.json")
 LOG = os.path.join(HERE, "paper_log.csv")
 MODEL = os.path.join(HERE, "model_xs_D.pkl")
 ANALYSIS = os.path.join(HERE, "analysis_cache.json")
+DEMO = False
+
+
+def use_variant(v, demo=None):
+    """Apunta modelo / estado / log / análisis del bot a la variante elegida (D original, FO con funding y OI)."""
+    global STATE, LOG, MODEL, ANALYSIS, DEMO
+    import run_paper
+    DEMO = DEMO if demo is None else demo
+    MODEL = os.path.join(HERE, f"model_xs_{v}.pkl")
+    sfx = "" if v == "D" else f"_{v}"
+    if DEMO:
+        STATE, LOG, ANALYSIS = (os.path.join(HERE, f"demo_{n}{sfx}.{e}") for n, e in (("state", "json"), ("log", "csv"), ("analysis", "json")))
+    else:
+        _, STATE, LOG = run_paper.paths(v)
+        ANALYSIS = os.path.join(HERE, f"analysis_cache{sfx}.json")
 MANUAL = os.path.join(HERE, "cuenta_manual.json")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 BACKTEST_REF = dict(mean=0.0029, lo=-0.0023, hi=0.0081, note="backtest 6 años, 1725 cohortes")
@@ -77,7 +93,32 @@ PREFIX = [  # (prefijo, grupo, plantilla); n = ventana en días
 ]
 
 
+BASE_DESC = {
+    "ret1": "retorno de 1 d", "ret3": "retorno de 3 d", "ret7": "retorno de 7 d", "ret14": "retorno de 14 d", "ret30": "retorno de 30 d",
+    "ret60": "retorno de 60 d", "vol7": "volatilidad de 7 d", "vol30": "volatilidad de 30 d", "volratio": "volatilidad 7 d / 30 d",
+    "range7": "rango de 7 d", "dhi30": "distancia al máximo de 30 d", "dlo30": "distancia al mínimo de 30 d",
+    "dhi90": "distancia al máximo de 90 d", "dlo90": "distancia al mínimo de 90 d", "turn": "volumen de ayer vs su media",
+    "lturn30": "volumen medio de 30 d (liquidez)", "rsi14": "RSI de 14 d", "body": "cuerpo de la vela", "upw": "mecha superior",
+    "loww": "mecha inferior", "age": "antigüedad del listado", "rel7": "retorno de 7 d frente al mercado", "rel30": "retorno de 30 d frente al mercado",
+    "beta60": "beta frente al mercado (60 d)", "idio60": "volatilidad propia (no explicada por el mercado)",
+    "fund_1d": "funding de ayer (alto = largos pagando mucho)", "fund_3d": "funding medio de 3 d", "fund_7d": "funding medio de 7 d",
+    "fund_z30": "funding de 7 d frente a su media de 30 d", "fund_chg3": "cambio del funding en 3 d", "fund_pos7": "% de días con funding positivo (7 d)",
+    "oi_chg1": "cambio del open interest en 1 d", "oi_chg7": "cambio del open interest en 7 d", "oi_chg30": "cambio del open interest en 30 d",
+    "oi_z30": "open interest frente a su media de 30 d", "oi_vol": "open interest / volumen negociado",
+    "oi_px_div": "sube el OI sin que suba el precio (posicionamiento)",
+}
+
+
 def describe(f):
+    if f.startswith("rk_"):
+        return "Ranking", "ranking de " + BASE_DESC.get(f[3:], f[3:])
+    if f.startswith("fund_"):
+        return "Funding", BASE_DESC.get(f, f)
+    if f.startswith("oi_"):
+        return "Open interest", BASE_DESC.get(f, f)
+    if f in BASE_DESC:
+        return ("Momentum" if f.startswith(("ret", "rel", "rsi")) else "Volatilidad" if f.startswith(("vol", "idio", "range", "beta")) else
+                "Volumen" if f in ("turn", "lturn30") else "Rango" if f.startswith(("dhi", "dlo")) else "Vela" if f in ("body", "upw", "loww") else "Otro"), BASE_DESC[f]
     if f in GROUPS:
         return GROUPS[f]
     for p, g, t in PREFIX:
@@ -192,11 +233,12 @@ class DemoSource:
 
 
 # ------------------------------------------------------------------ análisis del modelo
-def compute_analysis(bundle, hist, progress=lambda *_: None):
-    idx, P, F, liq_ok = xs_core.features(hist)
+def compute_analysis(bundle, hist, progress=lambda *_: None, derivs=None):
+    idx, P, F, liq_ok = xs_core.features(hist, bundle.get("variant", "D"), derivs)
     names = bundle["features"]
     cols = list(P["close"].columns)
-    X = np.stack([F[k].to_numpy()[-1] for k in names], axis=-1)
+    nan = np.full(len(cols), np.nan)
+    X = np.stack([F[k].to_numpy()[-1] if k in F else nan for k in names], axis=-1)
     valid = liq_ok[-1] & (np.isfinite(X).sum(axis=1) > 0) & np.isfinite(P["close"].to_numpy()[-1])
     iv = np.where(valid)[0]
     mdl = bundle["model"]
@@ -209,7 +251,7 @@ def compute_analysis(bundle, hist, progress=lambda *_: None):
         Xa[:, j] = 0.5
         contrib[:, j] = pred - mdl.predict(Xa)
     order = np.argsort(-pred)
-    K = xs_core.k_for(bundle["K"], len(iv))
+    K = xs_core.k_for(bundle["K"], len(iv), bundle.get("kfrac"))
     longs, shorts = set(order[:K]), set(order[-K:])
     c, v = P["close"], P["volume"]
     r1, r7, r30 = c.pct_change(1).iloc[-1], c.pct_change(7).iloc[-1], c.pct_change(30).iloc[-1]
@@ -304,7 +346,14 @@ class Hub:
             self.cache.clear()
         if cfg["exchange"] != old["exchange"] or cfg["mode"] != old["mode"]:
             self.exacc = None
-        if cfg["universe"] != old["universe"]:
+        if cfg["bot_variant"] != old["bot_variant"]:
+            use_variant(cfg["bot_variant"])
+            self.analysis = json.load(open(ANALYSIS)) if os.path.exists(ANALYSIS) else None
+            if DEMO and not os.path.exists(STATE):
+                st, lg = build_demo_state(self.src.uni, cfg["bot_capital"])
+                json.dump(st, open(STATE, "w"))
+                lg.to_csv(LOG, index=False)
+        if cfg["universe"] != old["universe"] or cfg["bot_variant"] != old["bot_variant"]:
             self.start_analysis(force=True)
         return cfg
 
@@ -344,7 +393,7 @@ class Hub:
                          n_eff=n_eff, win=float((r > 0).mean()), best=float(r.max()), worst=float(r.min()),
                          funding=float(sum(c.get("funding", 0.0) for c in cl_)))
         model = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(MODEL))) if os.path.exists(MODEL) else None
-        return dict(state=st, log=log, stats=stats, capital=self.cfg["bot_capital"], model=model, backtest=BACKTEST_REF,
+        return dict(state=st, log=log, stats=stats, capital=self.cfg["bot_capital"], model=model, backtest=BACKTEST_REF, variant=self.cfg["bot_variant"],
                     today_done=any(c["opened"] == time.strftime("%Y-%m-%d", time.gmtime()) for c in st["cohorts"]))
 
     def bot_close(self, symbol, opened):
@@ -411,11 +460,12 @@ class Hub:
             if self.an_status["state"] == "running":
                 return
             fresh = self.analysis and self.analysis.get("generated", "")[:10] == time.strftime("%Y-%m-%d") \
-                and self.analysis.get("universe", "both") == self.cfg["universe"]
+                and self.analysis.get("universe", "both") == self.cfg["universe"] \
+                and self.analysis.get("variant", "D") == self.cfg["bot_variant"]
             if not force and fresh:
                 return
             if not os.path.exists(MODEL):
-                self.an_status = dict(state="error", msg="No hay modelo entrenado: pulsa «Reentrenar».")
+                self.an_status = dict(state="error", msg=f"No hay modelo {self.cfg['bot_variant']} entrenado: pulsa «Reentrenar».")
                 return
             self.an_status = dict(state="running", msg="descargando velas diarias de todas las monedas…")
 
@@ -424,9 +474,14 @@ class Hub:
                 bundle = pickle.load(open(MODEL, "rb"))
                 syms = universo.filter_symbols(bundle["symbols"], self.cfg["universe"], self.markets())
                 hist = self.src.history(syms)
+                derivs = None
+                if bundle.get("variant") == "FO":
+                    self.an_status["msg"] = "actualizando funding y open interest…"
+                    derivs = derivs_live.load_seed() if self.demo else derivs_live.update(self.src.ex, syms, log=lambda *_: None)
                 self.an_status["msg"] = f"calculando modelo sobre {len(hist)} monedas…"
-                a = compute_analysis(bundle, hist, progress=lambda m: self.an_status.update(msg=m))
+                a = compute_analysis(bundle, hist, progress=lambda m: self.an_status.update(msg=m), derivs=derivs)
                 a["universe"] = self.cfg["universe"]
+                a["variant"] = bundle.get("variant", "D")
                 json.dump(a, open(ANALYSIS, "w"))
                 self.analysis = a
                 self.an_status = dict(state="done", msg="")
@@ -460,7 +515,8 @@ class Hub:
     def bot_args(self):
         c = self.cfg
         return [os.path.join(HERE, "run_paper.py"), "--force", "--capital", str(c["bot_capital"]), "--exchange", c["exchange"],
-                "--universe", c["universe"], "--fee", str(c["taker"]), "--slip", str(c["slippage"]), "--state", STATE, "--log", LOG]
+                "--universe", c["universe"], "--fee", str(c["taker"]), "--slip", str(c["slippage"]), "--state", STATE, "--log", LOG,
+                "--variant", c["bot_variant"], "--model", MODEL]
 
     # ---------------------------------------------------------------- reinicio con copia de seguridad
     def reset(self, what, capital):
@@ -564,7 +620,7 @@ def make_handler(hub: Hub):
                     ok = hub.run_job("run", hub.bot_args())
                     return self._send(200 if ok else 409, {"started": ok})
                 if u.path == "/api/train":
-                    ok = hub.run_job("train", [os.path.join(HERE, "train.py")])
+                    ok = hub.run_job("train", [os.path.join(HERE, "train.py"), "--variant", hub.cfg["bot_variant"]])
                     return self._send(200 if ok else 409, {"started": ok})
                 if u.path == "/api/config":
                     new = b.get("cfg", {})
@@ -664,7 +720,7 @@ def build_demo_state(uni, capital, days=40, seed=7):
 
 
 def main():
-    global STATE, LOG, ANALYSIS, MANUAL
+    global MANUAL
     ap = argparse.ArgumentParser()
     ap.add_argument("--exchange", default=None, help="sobrescribe el exchange de la configuración")
     ap.add_argument("--port", type=int, default=8765)
@@ -676,8 +732,9 @@ def main():
     if a.exchange:
         cfg["exchange"] = a.exchange
     if a.demo:                                               # el demo nunca toca tus archivos ni tus claves
-        STATE, LOG, ANALYSIS, MANUAL = (os.path.join(HERE, f) for f in ("demo_state.json", "demo_log.csv", "demo_analysis.json", "demo_manual.json"))
+        MANUAL = os.path.join(HERE, "demo_manual.json")
         cfg["mode"] = "paper"
+    use_variant(cfg["bot_variant"], a.demo)
     hub = Hub(cfg, a.demo, a.data)
     if a.demo and not os.path.exists(STATE):
         st, lg = build_demo_state(hub.src.uni, cfg["bot_capital"])

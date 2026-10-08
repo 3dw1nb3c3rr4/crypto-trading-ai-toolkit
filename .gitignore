@@ -20,3 +20,9 @@ bots/xs_daily/cuenta_manual.json.tmp
 bots/xs_daily/demo_manual.json
 bots/xs_daily/demo_manual.json.tmp
 bots/xs_daily/backups/
+bots/xs_daily/model_xs_*.pkl
+bots/xs_daily/derivs_live.pkl
+bots/xs_daily/paper_state_*.json
+bots/xs_daily/paper_log_*.csv
+bots/xs_daily/analysis_cache*.json
+bots/xs_daily/demo_*

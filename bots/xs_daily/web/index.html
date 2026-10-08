@@ -116,7 +116,7 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
     <div class="kpi"><div class="l">Disponible</div><div class="v num" id="k-av">–</div></div>
     <div class="kpi"><div class="l">PnL no realizado</div><div class="v num" id="k-up">–</div></div>
     <div class="sep"></div>
-    <div class="kpi"><div class="l">Bot · equity</div><div class="v num" id="k-bot">–</div></div>
+    <div class="kpi"><div class="l" id="k-botl">Bot · equity</div><div class="v num" id="k-bot">–</div></div>
     <div class="kpi"><div class="l">Bot · media</div><div class="v num" id="k-mean">–</div></div>
   </div>
   <div class="actions">
@@ -184,6 +184,8 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
       <div id="realconfirm" style="display:none"><label>Escribe CONFIRMO para activar el modo real</label><input id="c-confirm" placeholder="CONFIRMO"></div>
       <label>Qué operar (bot y listas)</label>
       <select id="c-universe"><option value="both">Cripto + acciones tokenizadas</option><option value="crypto">Solo cripto</option><option value="stocks">Solo acciones/TradFi tokenizadas</option></select>
+      <label>Variante del bot (estrategia)</label>
+      <select id="c-bot_variant"><option value="D">D · original (111 factores de precio)</option><option value="FO">FO · precio + funding + open interest (mejor en backtest)</option></select>
       <label>Capital del bot (paper)</label><input id="c-bot_capital" type="number" step="1">
       <label>Capital de la cuenta manual paper (se aplica al reiniciar)</label><input id="c-manual_capital" type="number" step="1">
     </div>
@@ -573,9 +575,9 @@ function renderBottom() {
       ${card("Dispersión entre monedas (7 d)", pct(m.dispersion7).replace("+", ""))}${card("Volatilidad mediana anual", (m.median_vol * 100).toFixed(0) + "%")}
       ${card("Largos del bot: 7 d previo", pct(m.long_avg_ret7), cls(m.long_avg_ret7))}${card("Cortos del bot: 7 d previo", pct(m.short_avg_ret7), cls(m.short_avg_ret7))}
       ${card("Monedas evaluadas", m.n_valid + " / " + m.n_symbols)}</div>
-      <div class="pad" style="padding-top:0"><div class="note" style="margin-top:0"><b style="color:var(--fg)">Cómo decide el bot.</b> Cada día, con la vela diaria cerrada, el modelo (gradient boosting con 111 factores tipo Alpha158 de Qlib, normalizados por ranking) puntúa cada moneda del universo elegido (<b>${{both: "cripto + acciones", crypto: "solo cripto", stocks: "solo acciones"}[AN.universe || "both"]}</b>).
+      <div class="pad" style="padding-top:0"><div class="note" style="margin-top:0"><b style="color:var(--fg)">Cómo decide el bot (variante ${AN.variant || "D"}).</b> Cada día, con la vela diaria cerrada, el modelo (gradient boosting con ${AN.variant === "FO" ? "factores de precio, Alpha158 de Qlib, funding y open interest" : "111 factores tipo Alpha158 de Qlib"}, normalizados por ranking) puntúa cada moneda del universo elegido (<b>${{both: "cripto + acciones", crypto: "solo cripto", stocks: "solo acciones"}[AN.universe || "both"]}</b>).
       Compra las ${AN.K} mejores y vende en corto las ${AN.K} peores, mantiene ${AN.H} días con 1/${AN.H} del capital por cohorte. Comisiones, deslizamiento y funding real se descuentan. Modelo entrenado hasta ${AN.model_trained_until}; análisis ${AN.generated}.<br><br>
-      <b style="color:var(--amber)">Honestidad:</b> en 6 años de backtest la ventaja fue +0.29% por cohorte con IC95% [−0.23%, +0.81%] (no distinguible de cero). «Solo acciones» no tiene backtest: hay muy poca historia.</div></div>`;
+      <b style="color:var(--amber)">Honestidad:</b> en 6 años de backtest ${AN.variant === "FO" ? "FO dio +0.45% por cohorte, IC95% [−0.13%, +0.99%]; su mejora frente al modelo sin derivados (+0.16%) no es significativa" : "la ventaja fue +0.29% por cohorte con IC95% [−0.23%, +0.81%] (no distinguible de cero)"}. «Solo acciones» no tiene backtest: hay muy poca historia.</div></div>`;
   } else if (botTab === "imp") {
     if (!AN) { el.innerHTML = `<div class="empty"><span class="spin"></span>${ANS.msg || "Calculando…"}</div>`; return; }
     const G = Object.entries(AN.groups_importance).sort((a, b) => b[1] - a[1]), gm = G[0][1], T = AN.top_features, tm = T[0].importance;
@@ -609,6 +611,7 @@ function renderKpis() {
     const B = ST.bot; let u = 0;
     for (const c of B.state.cohorts) for (const p of c.positions) { const v = botPnl(p); if (v != null) u += p.notional * v; }
     const tot = B.state.equity + u;
+    $("#k-botl").textContent = `Bot ${B.variant || "D"} · equity`;
     $("#k-bot").textContent = money(tot); $("#k-bot").className = "v num " + cls(tot - B.capital);
     $("#k-mean").textContent = B.stats ? pct(B.stats.mean) : "–"; $("#k-mean").className = "v num " + (B.stats ? cls(B.stats.mean) : "");
   }
@@ -667,7 +670,7 @@ function setTab(group, t) { document.querySelectorAll(group + " button").forEach
 
 /* ---------------- configuración y reinicio ---------------- */
 const PCTK = ["taker", "maker", "slippage", "mmr"];
-const CK = ["exchange", "mode", "universe", "bot_capital", "manual_capital", "taker", "maker", "slippage", "mmr", "default_leverage", "max_leverage", "max_position_usdt", "margin_mode"];
+const CK = ["exchange", "mode", "universe", "bot_variant", "bot_capital", "manual_capital", "taker", "maker", "slippage", "mmr", "default_leverage", "max_leverage", "max_position_usdt", "margin_mode"];
 async function openCfg() {
   const r = await api("/api/config"); $("#cfgdir").textContent = r.config_dir;
   for (const k of CK) { const i = $("#c-" + k); i.value = PCTK.includes(k) ? +(r.cfg[k] * 100).toFixed(4) : r.cfg[k]; }
@@ -679,7 +682,7 @@ async function openCfg() {
   $("#m-cfg").classList.add("on");
 }
 $("#cfg-save").onclick = async () => {
-  const cfg = {}; for (const k of CK) { const v = $("#c-" + k).value; cfg[k] = PCTK.includes(k) ? +v / 100 : (["exchange", "mode", "universe", "margin_mode"].includes(k) ? v : +v); }
+  const cfg = {}; for (const k of CK) { const v = $("#c-" + k).value; cfg[k] = PCTK.includes(k) ? +v / 100 : (["exchange", "mode", "universe", "margin_mode", "bot_variant"].includes(k) ? v : +v); }
   const r = await post("/api/config", {cfg, confirm: $("#c-confirm").value.trim()});
   if (r.ok) { toast(r.msg, "ok"); $("#m-cfg").classList.remove("on"); CFG = r.cfg; F.lev = CFG.default_leverage; ACC = null; refreshAccount(); loadMarkets(); pollAnalysis(); renderRight(); } else toast(r.error, "err");
 };

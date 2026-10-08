@@ -25,6 +25,7 @@ DEFAULTS = dict(
     default_leverage=3, max_leverage=10,           # tope de apalancamiento (seguridad)
     max_position_usdt=100.0,         # tope de valor por orden en demo/real (seguridad)
     margin_mode="isolated",
+    bot_variant="D",                 # D (original) | FO (con funding y open interest)
 )
 EXCHANGES = ("binanceusdm", "okx", "bybit")
 
@@ -64,6 +65,8 @@ def validate(cfg: dict) -> dict:
     out["max_leverage"] = int(out["max_leverage"])
     if not 1 <= out["max_leverage"] <= 125 or not 1 <= out["default_leverage"] <= out["max_leverage"]:
         raise ValueError("apalancamiento fuera de rango (1 <= por defecto <= máximo <= 125)")
+    if out["bot_variant"] not in ("D", "FO"):
+        raise ValueError("variante del bot inválida")
     if out["margin_mode"] not in ("isolated", "cross"):
         raise ValueError("modo de margen inválido")
     return out

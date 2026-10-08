@@ -66,7 +66,7 @@ def load_state(path, capital):
     return {"equity": capital, "cohorts": [], "closed": []}
 
 
-def step(state, ex, bundle, today, log=print):
+def step(state, ex, bundle, today, log=print, derivs=None):
     realized = 0.0
     keep = []
     for c in state["cohorts"]:
@@ -96,7 +96,7 @@ def step(state, ex, bundle, today, log=print):
         log("  ya se abrió la cohorte de hoy; no se abre otra")
         return realized
     hist = fetch_history(ex, bundle["symbols"])
-    date, longs, shorts, _ = xs_core.pick(bundle, hist)
+    date, longs, shorts, _ = xs_core.pick(bundle, hist, derivs)
     if not longs:
         log("  datos insuficientes para elegir posiciones; no se abre cohorte")
         return realized
@@ -126,14 +126,23 @@ def unrealized(state, ex):
     return u
 
 
+def paths(variant):
+    """(modelo, estado, log) por variante. D conserva los nombres originales para no perder tu historial."""
+    if variant == "D":
+        return os.path.join(HERE, "model_xs_D.pkl"), os.path.join(HERE, "paper_state.json"), os.path.join(HERE, "paper_log.csv")
+    return (os.path.join(HERE, f"model_xs_{variant}.pkl"), os.path.join(HERE, f"paper_state_{variant}.json"),
+            os.path.join(HERE, f"paper_log_{variant}.csv"))
+
+
 def main():
     global FEE, SLIP
     import ccxt
     ap = argparse.ArgumentParser()
     ap.add_argument("--exchange", default="binanceusdm")
-    ap.add_argument("--model", default=os.path.join(HERE, "model_xs_D.pkl"))
-    ap.add_argument("--state", default=os.path.join(HERE, "paper_state.json"))
-    ap.add_argument("--log", default=os.path.join(HERE, "paper_log.csv"))
+    ap.add_argument("--variant", default="D", choices=xs_core.VARIANTS, help="D (original) o FO (con funding y open interest)")
+    ap.add_argument("--model", default=None, help="por defecto model_xs_<variante>.pkl")
+    ap.add_argument("--state", default=None, help="por defecto paper_state.json (D) / paper_state_FO.json (FO)")
+    ap.add_argument("--log", default=None)
     ap.add_argument("--capital", type=float, default=1000.0)
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--universe", default="both", choices=["crypto", "stocks", "both"], help="qué opera el bot: cripto, acciones tokenizadas o ambos")
@@ -146,7 +155,10 @@ def main():
     if not allowed and not a.force:
         sys.exit(f"{STRATEGY_NAME} no está aprobada ni en observación en strategy_selection.json; no se opera (usa --force para paper de todos modos).")
     print("MODO PAPER: no se envían órdenes reales.", "Estado en el selector:", "aprobada" if STRATEGY_NAME in sel.get("enabled", []) else "en observación")
+    a.model, a.state, a.log = (a.model or paths(a.variant)[0], a.state or paths(a.variant)[1], a.log or paths(a.variant)[2])
     bundle = pickle.load(open(a.model, "rb"))
+    if bundle.get("variant", "D") != a.variant:
+        sys.exit(f"el modelo {a.model} es de la variante {bundle.get('variant', 'D')}, no {a.variant}: entrénalo con train.py --variant {a.variant}")
     ex = getattr(ccxt, a.exchange)({"enableRateLimit": True})
     for k in range(6):                                           # reintentos: fallos de DNS/red pasajeros no deben tumbar la ejecución diaria
         try:
@@ -162,7 +174,12 @@ def main():
     print(f"universo: {a.universe} -> {len(bundle['symbols'])} símbolos | comisión {FEE:.4%} | deslizamiento {SLIP:.4%}")
     state = load_state(a.state, a.capital)
     today = time.strftime("%Y-%m-%d", time.gmtime())
-    step(state, ex, bundle, today)
+    derivs = None
+    if a.variant == "FO":                                    # funding y OI recientes (API) sobre el historial local
+        import derivs_live
+        derivs = derivs_live.update(ex, bundle["symbols"])
+    print(f"variante {a.variant} | modelo entrenado hasta {bundle.get('trained_until')} | estado {os.path.basename(a.state)}")
+    step(state, ex, bundle, today, derivs=derivs)
     u = unrealized(state, ex)
     json.dump(state, open(a.state, "w"), indent=1)
     new = not os.path.exists(a.log)
