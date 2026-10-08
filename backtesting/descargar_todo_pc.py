@@ -31,14 +31,19 @@ def job_api(exchange, symbols, out_dir, days):
 
 
 def job_files(symbols, out_dir, workers):
+    t0, n = time.time(), [0]
+
+    def log(msg):                                     # un renglón por símbolo terminado, con avance y tiempo
+        n[0] += 1
+        print(f"  [{n[0]}/{len(symbols) * 2}] {time.time()-t0:5.0f}s  {msg}", flush=True)
     ok_oi, ok_f = dm.probe(), dm.probe_funding()
     end = (pd.Timestamp.now("UTC") - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     cache = os.path.join(out_dir, "metrics_cache")
     data = {"funding": {}, "oi": {}, "meta": {"source": "data.binance.vision"}}
     if ok_f:
-        data["funding"] = dm.download_funding(symbols, "2020-01-01", end, cache, workers, log=lambda *a: None)
+        data["funding"] = dm.download_funding(symbols, "2020-01-01", end, cache, workers, log=log)
     if ok_oi:
-        data["oi"] = dm.download(symbols, "2021-12-01", end, cache, workers, log=lambda *a: None)["oi"]
+        data["oi"] = dm.download(symbols, "2021-12-01", end, cache, workers, log=log)["oi"]
     pickle.dump(data, open(os.path.join(out_dir, "derivs_metrics.pkl"), "wb"))
     print(f"[binance_files] probe OI={ok_oi} funding={ok_f}", flush=True)
     cobertura("binance_files funding", data["funding"]); cobertura("binance_files OI", data["oi"])
