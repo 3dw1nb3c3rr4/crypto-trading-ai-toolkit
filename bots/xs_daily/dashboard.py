@@ -829,7 +829,13 @@ def main():
         json.dump(st, open(STATE, "w"))
         lg.to_csv(LOG, index=False)
     hub.start_analysis()
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(hub))
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(hub))
+    except OSError:
+        sys.exit(f"\nEL PUERTO {a.port} YA ESTÁ EN USO: hay otro panel abierto (seguramente de otra carpeta/versión) y el navegador "
+                 f"te está mostrando ese.\nCiérralo (Ctrl+C en su ventana de PowerShell) o, en PowerShell:\n"
+                 f"  Stop-Process -Id (Get-NetTCPConnection -LocalPort {a.port} -State Listen).OwningProcess\n"
+                 f"y vuelve a ejecutar este panel. O usa otro puerto: python bots/xs_daily/dashboard.py --port {a.port + 1}")
     url = f"http://127.0.0.1:{a.port}"
     print(f"Panel en {url}  (Ctrl+C para cerrar) | fuente: {hub.src.name} | modo de la cuenta manual: {cfg['mode'].upper()}")
     print(f"Configuración y claves en {cl.DIR}")
