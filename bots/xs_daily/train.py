@@ -37,7 +37,7 @@ if __name__ == "__main__":
     derivs = None
     if a.variant == "FO":
         import derivs_live
-        derivs = derivs_live.load_seed(a.derivs)
+        derivs = derivs_live.load_seed(a.derivs) if a.derivs else derivs_live.load()   # historial + lo acumulado en vivo
         if not derivs[0] and not derivs[1]:
             sys.exit("FO necesita el historial de funding/OI: ejecuta backtesting/descargar_todo_pc.py o pasa --derivs ruta.pkl")
         print(f"derivados: funding {len(derivs[0])} símbolos, OI {len(derivs[1])} símbolos")

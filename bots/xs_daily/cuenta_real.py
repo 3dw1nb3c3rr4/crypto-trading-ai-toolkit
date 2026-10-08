@@ -17,7 +17,7 @@ import config_local as cl
 
 def make_exchange(cfg, keys=None, authenticated=True):
     exid = cfg["exchange"]
-    opts = {"enableRateLimit": True, "options": {"defaultType": "swap"}}
+    opts = {"enableRateLimit": True, "options": {"defaultType": "swap", "fetchCurrencies": False}}
     if authenticated:
         k = keys or cl.load_keys(exid, cfg["mode"])
         if not k:
@@ -136,3 +136,32 @@ class ExchangeAccount:
     def cancel(self, oid, symbol):
         self.ex.cancel_order(oid, symbol)
         return "orden cancelada"
+
+
+def diagnose(cfg, keys):
+    """Prueba las claves (solo lectura: fetch_balance) en cada entorno posible y dice dónde funcionan.
+    Útil con el error -2015 de Binance (clave de otro entorno, IP no autorizada o sin permiso de Futuros)."""
+    exid = cfg["exchange"]
+    envs = [("demo", "DEMO (demo trading)"), ("testnet", "TESTNET antigua"), ("real", "REAL")] if exid == "binanceusdm" \
+        else [("demo", "DEMO / sandbox"), ("real", "REAL")]
+    out = []
+    for env, label in envs:
+        opts = {"enableRateLimit": True, "options": {"defaultType": "swap", "fetchCurrencies": False}, "apiKey": keys["apiKey"], "secret": keys["secret"]}
+        if keys.get("password"):
+            opts["password"] = keys["password"]
+        ex = getattr(ccxt, exid)(opts)
+        try:
+            if env == "demo" and exid == "binanceusdm":
+                ex.enable_demo_trading(True)
+            elif env in ("demo", "testnet"):
+                ex.set_sandbox_mode(True)
+        except Exception as e:                                   # noqa: BLE001
+            out.append(dict(env=env, label=label, ok=False, msg=f"no disponible en tu ccxt ({type(e).__name__})"))
+            continue
+        try:
+            b = ex.fetch_balance()
+            u = b.get("USDT") or {}
+            out.append(dict(env=env, label=label, ok=True, msg=f"saldo USDT total {u.get('total')} · libre {u.get('free')}"))
+        except Exception as e:                                   # noqa: BLE001
+            out.append(dict(env=env, label=label, ok=False, msg=f"{type(e).__name__}: {str(e)[:140]}"))
+    return out

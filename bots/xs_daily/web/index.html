@@ -230,6 +230,11 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
   <div class="foot"><button id="r-cancel">Cancelar</button><button class="danger" id="r-go">Reiniciar</button></div>
 </div></div>
 
+<div class="modal" id="m-train"><div class="box" style="width:min(520px,94vw)">
+  <h3>Reentrenar el modelo</h3><div id="tr-body" class="muted">Revisando datos…</div>
+  <div class="foot"><button id="tr-cancel">Cancelar</button><button id="tr-only">Solo reentrenar</button><button class="primary" id="tr-upd">Descargar datos nuevos y reentrenar</button></div>
+</div></div>
+
 <div class="modal" id="m-conf"><div class="box" style="width:min(460px,94vw)">
   <h3 id="cf-title">Confirmar orden</h3><div id="cf-body"></div>
   <div class="foot"><button id="cf-cancel">Cancelar</button><button class="primary" id="cf-go">Enviar orden</button></div>
@@ -668,8 +673,8 @@ async function loadMarkets() {
   $("#symlist").innerHTML = MK.map(m => `<option value="${base(m.symbol)}">${m.cls === "stock" ? "acción" : "cripto"}</option>`).join("");
   if (leftTab === "mk") renderLeft();
 }
-async function job(kind) {
-  const r = await fetch("/api/" + kind, {method: "POST"});
+async function job(kind, body) {
+  const r = await fetch("/api/" + kind, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
   if (r.status === 409) { toast("Ya hay una tarea en curso.", "warn"); return; }
   botTab = "con"; setTab("#bt", "con"); renderBottom();
   $("#btn-run").disabled = $("#btn-train").disabled = true;
@@ -700,7 +705,13 @@ $("#cfg-save").onclick = async () => {
 };
 $("#k-save").onclick = async () => { const r = await post("/api/keys", {mode: $("#k-mode").value, apiKey: $("#k-key").value, secret: $("#k-secret").value, password: $("#k-pass").value});
   toast(r.ok ? r.msg : r.error, r.ok ? "ok" : "err"); if (r.ok) { $("#k-key").value = $("#k-secret").value = $("#k-pass").value = ""; openCfg(); } };
-$("#k-test").onclick = async () => { toast("Probando conexión…"); const r = await post("/api/keys/test", {mode: $("#k-mode").value}); toast(r.ok ? r.msg : r.error, r.ok ? "ok" : "err"); };
+$("#k-test").onclick = async () => {
+  $("#k-status").innerHTML = '<span class="spin"></span>probando en todos los entornos…';
+  const r = await post("/api/keys/test", {mode: $("#k-mode").value});
+  if (r.error) { $("#k-status").innerHTML = `<span class="neg">${r.error}</span>`; return; }
+  $("#k-status").innerHTML = `<div class="${r.ok ? "pos" : "neg"}" style="margin-bottom:4px">${r.msg}</div>` +
+    (r.results || []).map(x => `<div style="font-size:11px">${x.ok ? "✔" : "✖"} <b>${x.label}</b>: <span class="muted">${x.msg}</span></div>`).join("");
+};
 $("#k-del").onclick = async () => { if (!confirm("¿Borrar las claves guardadas?")) return; const r = await post("/api/keys/delete", {mode: $("#k-mode").value}); toast(r.ok ? r.msg : r.error, r.ok ? "ok" : "err"); openCfg(); };
 $("#cfg-cancel").onclick = () => $("#m-cfg").classList.remove("on");
 $("#btn-cfg").onclick = openCfg;
@@ -717,7 +728,22 @@ document.querySelectorAll("#tf button[data-tf]").forEach(b => b.onclick = () => 
 $("#btn-fit").onclick = () => resetView(candleData.length);
 $("#search").onchange = () => { const v = $("#search").value.trim().toUpperCase(); if (!v) return; const m = MK.find(x => base(x.symbol) === v) || MK.find(x => base(x.symbol).startsWith(v)); if (m) select(m.symbol); else toast("No encontrado: " + v, "warn"); };
 $("#btn-run").onclick = () => job("run");
-$("#btn-train").onclick = () => { if (confirm("¿Reentrenar el modelo con el historial largo? Tarda unos minutos.")) job("train"); };
+$("#btn-train").onclick = async () => {
+  $("#tr-body").textContent = "Revisando datos…"; $("#m-train").classList.add("on");
+  const i = await post("/api/train_info");
+  if (i.error) { $("#tr-body").textContent = i.error; return; }
+  const fresh = i.stale_days != null && i.stale_days <= 0;
+  let h = `<p>Variante <b>${i.variant}</b> · modelo actual entrenado hasta <b class="num">${i.model_until || "—"}</b> · tus velas llegan hasta <b class="num">${i.data_until || "—"}</b>.</p>`;
+  if (!i.model_until) h += "<p>Aún no hay modelo de esta variante: entrénalo.</p>";
+  else if (i.new_days != null && i.new_days <= 0) h += `<p style="color:var(--amber)">No hay velas nuevas desde el último entrenamiento: reentrenar daría el mismo modelo.${fresh ? "" : " ¿Descargar datos nuevos primero?"}</p>`;
+  else h += `<p>Hay <b>${i.new_days}</b> día(s) de velas que el modelo aún no ha visto.</p>`;
+  if (!fresh && i.stale_days != null) h += `<p>Faltan unos <b>${i.stale_days}</b> día(s) de datos hasta hoy. «Descargar datos nuevos» los baja del exchange (velas de OKX${i.variant === "FO" ? " y funding/OI de Binance" : ""}) y luego entrena. Tarda unos minutos.</p>`;
+  $("#tr-body").innerHTML = h;
+  $("#tr-upd").disabled = fresh; $("#tr-only").disabled = !!(i.model_until && i.new_days != null && i.new_days <= 0 && fresh);
+};
+$("#tr-cancel").onclick = () => $("#m-train").classList.remove("on");
+$("#tr-only").onclick = () => { $("#m-train").classList.remove("on"); job("train", {}); };
+$("#tr-upd").onclick = () => { $("#m-train").classList.remove("on"); job("train", {update: true}); };
 
 /* ---------------- paneles redimensionables (se recuerdan en este navegador) ---------------- */
 const LAYOUT_DEF = {lw: 270, rw: 340, bh: Math.round(window.innerHeight * 0.32)};

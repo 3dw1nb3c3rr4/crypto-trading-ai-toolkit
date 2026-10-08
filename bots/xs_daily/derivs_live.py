@@ -19,7 +19,6 @@ STORE = os.path.join(HERE, "derivs_live.pkl")
 SEEDS = [os.path.join(ROOT, "backtesting", "derivados", "derivs_metrics.pkl"), os.path.join(ROOT, "data", "derivs_metrics.pkl"),
          os.path.join(ROOT, "backtesting", "derivados", "derivs_funding_bin.pkl")]
 DAY = 86_400_000
-KEEP_DAYS = 420
 
 
 def _merge(old, new, cols):
@@ -33,8 +32,7 @@ def _merge(old, new, cols):
         return pd.DataFrame(columns=cols)
     df = df[cols].copy()
     df["ts"] = df["ts"].astype("int64")
-    df = df.drop_duplicates("ts", keep="last").sort_values("ts")
-    return df[df.ts >= df.ts.max() - KEEP_DAYS * DAY].reset_index(drop=True)
+    return df.drop_duplicates("ts", keep="last").sort_values("ts").reset_index(drop=True)   # se guarda todo: sirve para reentrenar
 
 
 def load_seed(paths=None):
@@ -44,10 +42,15 @@ def load_seed(paths=None):
 
 
 def load(store=STORE, seeds=None):
+    """Historial (semilla) + lo acumulado en vivo, unidos por símbolo (lo más reciente gana si se repite una fecha)."""
+    fund, oi = load_seed(seeds)
     if os.path.exists(store):
         d = pickle.load(open(store, "rb"))
-        return d.get("funding", {}), d.get("oi", {})
-    return load_seed(seeds)
+        for s, df in d.get("funding", {}).items():
+            fund[s] = _merge(fund.get(s), df, ["ts", "rate"])
+        for s, df in d.get("oi", {}).items():
+            oi[s] = _merge(oi.get(s), df, ["ts", "oi_amt", "oi_usd"])
+    return fund, oi
 
 
 def fetch_recent(ex, sym, days=70):

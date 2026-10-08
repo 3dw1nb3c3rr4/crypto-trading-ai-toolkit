@@ -490,19 +490,24 @@ class Hub:
         threading.Thread(target=work, daemon=True).start()
 
     # ---------------------------------------------------------------- tareas (bot / reentrenar)
-    def run_job(self, name, args):
+    def run_job(self, name, args, steps=None):
+        """Ejecuta uno o varios scripts seguidos (steps = lista de listas de argumentos); se detiene en el primer error."""
         if self.job["running"]:
             return False
         self.job = dict(running=True, name=name, lines=[], code=None)
 
         def work():
             try:
-                p = subprocess.Popen([sys.executable, "-u", *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                     cwd=ROOT, creationflags=NO_WINDOW, encoding="utf-8", errors="replace")
-                for line in p.stdout:
-                    self.job["lines"].append(line.rstrip("\n"))
-                p.wait()
-                self.job["code"] = p.returncode
+                for st in steps or [args]:
+                    self.job["lines"].append(f"$ {os.path.basename(st[0])} {' '.join(st[1:])}")
+                    p = subprocess.Popen([sys.executable, "-u", *st], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                         cwd=ROOT, creationflags=NO_WINDOW, encoding="utf-8", errors="replace")
+                    for line in p.stdout:
+                        self.job["lines"].append(line.rstrip("\n"))
+                    p.wait()
+                    self.job["code"] = p.returncode
+                    if p.returncode != 0:
+                        break
             except Exception as e:                           # noqa: BLE001
                 self.job["lines"].append(f"ERROR: {e}")
                 self.job["code"] = 1
@@ -620,7 +625,9 @@ def make_handler(hub: Hub):
                     ok = hub.run_job("run", hub.bot_args())
                     return self._send(200 if ok else 409, {"started": ok})
                 if u.path == "/api/train":
-                    ok = hub.run_job("train", [os.path.join(HERE, "train.py"), "--variant", hub.cfg["bot_variant"]])
+                    tr = [os.path.join(HERE, "train.py"), "--variant", hub.cfg["bot_variant"]]
+                    steps = ([[os.path.join(HERE, "update_data.py")] + (["--no-derivs"] if hub.cfg["bot_variant"] == "D" else [])] if b.get("update") else []) + [tr]
+                    ok = hub.run_job("train", None, steps)
                     return self._send(200 if ok else 409, {"started": ok})
                 if u.path == "/api/config":
                     new = b.get("cfg", {})
@@ -637,11 +644,37 @@ def make_handler(hub: Hub):
                     hub.exacc = None
                     return self._send(200, {"ok": True, "msg": "claves borradas"})
                 if u.path == "/api/keys/test":
-                    cfg = {**hub.cfg, "mode": b.get("mode", hub.cfg["mode"])}
-                    if cfg["mode"] == "paper":
-                        raise ValueError("elige demo o real para probar claves")
-                    r = cr.ExchangeAccount(cfg).test()
-                    return self._send(200, {"ok": True, "msg": f"conexión OK · saldo USDT total {r['total']} · libre {r['free']}"})
+                    mode = b.get("mode", hub.cfg["mode"])
+                    keys = cl.load_keys(hub.cfg["exchange"], mode)
+                    if not keys:
+                        raise ValueError(f"no hay claves guardadas para la cuenta {mode.upper()}")
+                    res = cr.diagnose(hub.cfg, keys)
+                    good = [r for r in res if r["ok"]]
+                    want = "real" if mode == "real" else "demo"
+                    ok = any(r["env"] == want for r in good)
+                    if ok:
+                        msg = f"Conexión OK en {mode.upper()}: " + next(r["msg"] for r in good if r["env"] == want)
+                    elif good:
+                        msg = (f"Estas claves NO funcionan en {mode.upper()}, pero sí en {', '.join(r['label'] for r in good)}. "
+                               f"Guárdalas en la cuenta correcta (o crea claves de {mode.upper()}).")
+                    elif all(r["msg"].startswith(("NetworkError", "RequestTimeout", "ExchangeNotAvailable")) for r in res):
+                        msg = "No hay conexión con el exchange (internet, VPN o DNS): no se pudo comprobar nada."
+                    else:
+                        msg = ("Las claves no funcionan en ningún entorno. Revisa en el exchange: 1) que copiaste bien la clave y el secreto, "
+                               "2) que la clave tenga activado el permiso de Futuros (Enable Futures), "
+                               "3) si la limitaste por IP, que incluya la IP pública de tu PC, "
+                               "4) para DEMO, que las creaste en demo.binance.com (Futuros demo), no en la cuenta normal.")
+                    return self._send(200, {"ok": ok, "msg": msg, "results": res})
+                if u.path == "/api/train_info":
+                    import update_data
+                    info = dict(variant=hub.cfg["bot_variant"], model_until=None)
+                    if os.path.exists(MODEL):
+                        info["model_until"] = pickle.load(open(MODEL, "rb")).get("trained_until")
+                    ld = update_data.last_day()
+                    info["data_until"] = str(ld.date()) if ld is not None else None
+                    info["new_days"] = (pd.Timestamp(info["data_until"]) - pd.Timestamp(info["model_until"])).days if info["model_until"] and info["data_until"] else None
+                    info["stale_days"] = (pd.Timestamp.now(tz="UTC").normalize().tz_localize(None) - pd.Timestamp(info["data_until"])).days - 1 if info["data_until"] else None
+                    return self._send(200, info)
                 if u.path == "/api/order":
                     mode = hub.cfg["mode"]
                     if mode == "real" and not b.get("confirm"):
