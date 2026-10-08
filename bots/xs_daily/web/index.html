@@ -227,8 +227,14 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
 <div class="modal" id="m-reset"><div class="box" style="width:min(460px,94vw)">
   <h3>Reiniciar</h3>
   <label>Qué reiniciar</label>
-  <select id="r-what"><option value="manual">Cuenta manual (paper)</option><option value="bot">Bot (estrategia)</option><option value="all">Ambos</option></select>
-  <label>Capital inicial (USDT)</label><input id="r-cap" type="number" value="1000">
+  <select id="r-what">
+    <option value="bot_today">Bot: rehacer la consulta de hoy (mantiene las operaciones anteriores)</option>
+    <option value="bot">Bot: reset total (borra operaciones activas e historial)</option>
+    <option value="manual">Cuenta manual (paper): reset total</option>
+    <option value="all">Todo: bot y cuenta manual</option>
+  </select>
+  <div id="r-desc" class="note"></div>
+  <div id="r-capbox"><label>Capital inicial (USDT)</label><input id="r-cap" type="number" value="1000"></div>
   <div class="note">Antes de borrar se guarda una copia en <span class="num">bots/xs_daily/backups/</span>. No afecta a cuentas DEMO/REAL del exchange.</div>
   <div class="foot"><button id="r-cancel">Cancelar</button><button class="danger" id="r-go">Reiniciar</button></div>
 </div></div>
@@ -744,10 +750,22 @@ async function showAcct() {
 $("#acct-refresh").onclick = async () => { $("#acct-status").innerHTML = '<span class="spin"></span>leyendo tu cuenta…'; const r = await post("/api/account_data/refresh"); toast(r.ok ? r.msg : r.error, r.ok ? "ok" : "err"); showAcct(); };
 $("#cfg-cancel").onclick = () => $("#m-cfg").classList.remove("on");
 $("#btn-cfg").onclick = openCfg;
-$("#btn-reset").onclick = () => { $("#r-cap").value = CFG ? CFG.manual_capital : 1000; $("#m-reset").classList.add("on"); };
+const R_DESC = {
+  bot_today: "Quita solo la cohorte que el bot abrió hoy (devuelve su comisión de entrada) y vuelve a ejecutar el bot para sacar las señales de hoy de nuevo, por ejemplo después de reentrenar o cambiar de variante. Las cohortes de días anteriores siguen abiertas.",
+  bot: "Borra TODAS las operaciones activas del bot, sus cohortes cerradas y la curva de equity. El bot empieza de cero con el capital indicado.",
+  manual: "Borra posiciones, órdenes e historial de tu cuenta manual simulada (paper) y la deja con el capital indicado. No toca cuentas DEMO/REAL del exchange.",
+  all: "Reset total del bot y de la cuenta manual paper.",
+};
+function rDesc() { const w = $("#r-what").value; $("#r-desc").textContent = R_DESC[w]; $("#r-capbox").style.display = w === "bot_today" ? "none" : "block";
+  $("#r-cap").value = w === "bot" ? (CFG ? CFG.bot_capital : 1000) : (CFG ? CFG.manual_capital : 1000); $("#r-go").textContent = w === "bot_today" ? "Rehacer consulta de hoy" : "Reiniciar"; }
+$("#r-what").onchange = rDesc;
+$("#btn-reset").onclick = () => { $("#r-what").value = "bot_today"; rDesc(); $("#m-reset").classList.add("on"); };
 $("#r-cancel").onclick = () => $("#m-reset").classList.remove("on");
-$("#r-go").onclick = async () => { const what = $("#r-what").value; if (!confirm("¿Seguro? Se guarda una copia de seguridad antes de borrar.")) return;
-  const r = await post("/api/reset", {what, capital: +$("#r-cap").value}); toast(r.ok ? r.msg : r.error, r.ok ? "warn" : "err"); $("#m-reset").classList.remove("on"); pollState(); refreshAccount(); };
+$("#r-go").onclick = async () => { const what = $("#r-what").value;
+  if (!confirm(what === "bot_today" ? "¿Quitar la cohorte de hoy y volver a ejecutar el bot?" : "¿Seguro? Se guarda una copia de seguridad antes de borrar.")) return;
+  const r = await post("/api/reset", {what, capital: +$("#r-cap").value}); toast(r.ok ? r.msg : r.error, r.ok ? "warn" : "err"); $("#m-reset").classList.remove("on");
+  await pollState(); refreshAccount();
+  if (r.ok && what === "bot_today") job("run"); };
 $("#cf-cancel").onclick = () => $("#m-conf").classList.remove("on");
 
 document.querySelectorAll("#lt button").forEach(b => b.onclick = () => { leftTab = b.dataset.t; setTab("#lt", leftTab); $("#left").innerHTML = ""; renderLeft(); });

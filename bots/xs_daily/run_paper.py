@@ -108,7 +108,7 @@ def step(state, ex, bundle, today, log=print, derivs=None):
             px = exec_price(ex, s, side, opening=True)
             if px is None:
                 continue
-            positions.append({"symbol": s, "side": side, "entry": px, "notional": notional})
+            positions.append({"symbol": s, "side": side, "entry": px, "notional": notional, "fee": notional * FEE})
             state["equity"] -= notional * FEE
     state["cohorts"].append({"opened": today, "signal_date": str(date.date()), "capital": cap, "positions": positions})
     log(f"  cohorte abierta ({len(positions)} posiciones, {notional:.2f} c/u): LONG {', '.join(s.split('/')[0] for s in longs)} | "

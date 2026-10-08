@@ -562,6 +562,24 @@ class Hub:
             if os.path.exists(f):
                 shutil.copy2(f, bk)
         done = []
+        if what == "bot_today":                              # rehacer la consulta de hoy: solo se quita la cohorte abierta hoy
+            today = time.strftime("%Y-%m-%d", time.gmtime())
+            if not os.path.exists(STATE):
+                raise ValueError("el bot aún no tiene estado: pulsa «Bot hoy»")
+            st = json.load(open(STATE))
+            hoy = [c for c in st["cohorts"] if c["opened"] == today]
+            if not hoy:
+                raise ValueError("hoy no hay cohorte abierta: pulsa «Bot hoy» directamente")
+            refund = sum(p.get("fee", p["notional"] * self.cfg["taker"]) for c in hoy for p in c["positions"])
+            st["cohorts"] = [c for c in st["cohorts"] if c["opened"] != today]
+            st["equity"] += refund                           # devuelve la comisión de entrada simulada
+            json.dump(st, open(STATE, "w"), indent=1)
+            if os.path.exists(LOG):
+                lg = pd.read_csv(LOG)
+                lg[lg["fecha"].astype(str) != today].to_csv(LOG, index=False)
+            n = sum(len(c["positions"]) for c in hoy)
+            return (f"cohorte de hoy quitada ({n} posiciones, comisión devuelta {refund:.2f} USDT); "
+                    f"se mantienen {len(st['cohorts'])} cohortes anteriores (copia en backups/{stamp})")
         if what in ("bot", "all"):
             for f in (STATE, LOG):
                 if os.path.exists(f):
