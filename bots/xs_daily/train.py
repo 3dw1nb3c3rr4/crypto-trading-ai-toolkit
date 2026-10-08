@@ -12,7 +12,9 @@ from engine import load_universe  # noqa: E402
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=os.path.join(xs_core.ROOT, "data", "trading_history", "ohlcv_cache_2y.pkl"))
+    ap.add_argument("--data", default=next((p for p in (os.path.join(xs_core.ROOT, "data", "ohlcv_daily_long.pkl"),) if os.path.exists(p)),
+                                                  os.path.join(xs_core.ROOT, "data", "trading_history", "ohlcv_cache_2y.pkl")),
+                    help="por defecto el historial largo de 6 años si existe (data/ohlcv_daily_long.pkl)")
     ap.add_argument("--until", default=None, help="entrenar solo con velas anteriores a esta fecha (para pruebas fuera de muestra)")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_xs_D.pkl"))
     a = ap.parse_args()

@@ -43,8 +43,10 @@ class FakeExchange:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2026-06-01")
+    ap.add_argument("--data", default=os.path.join(xs_core.ROOT, "data", "trading_history", "ohlcv_cache_2y.pkl"))
+    ap.add_argument("--save", default=None, help="CSV con las cohortes cerradas")
     a = ap.parse_args()
-    uni = load_universe(os.path.join(xs_core.ROOT, "data", "trading_history", "ohlcv_cache_2y.pkl"), min_bars=150)
+    uni = load_universe(a.data, min_bars=150)
     train_uni = {s: df[df.ts < a.start].reset_index(drop=True) for s, df in uni.items()}
     bundle = xs_core.train({s: d for s, d in train_uni.items() if len(d) >= 150})
     print(f"modelo entrenado hasta {bundle['trained_until']} con {bundle['n_rows']} filas (sin ver nada desde {a.start})")
@@ -72,6 +74,8 @@ if __name__ == "__main__":
                 errors += 1
     cl = pd.DataFrame(state["closed"])
     print(f"días simulados={len(days)} | cohortes cerradas={len(cl)} | errores de contabilidad/edad={errors}")
+    if a.save:
+        cl.to_csv(a.save, index=False)
     r = cl["ret"].to_numpy()
     print(f"FUERA DE MUESTRA ({a.start} -> fin): retorno medio por cohorte {r.mean():+.3%} (sin comisión de entrada) | "
           f"cohortes positivas {np.mean(r > 0):.0%} | equity final realizada {state['equity']:.2f} desde 1000 "

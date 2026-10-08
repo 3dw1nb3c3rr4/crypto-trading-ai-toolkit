@@ -280,3 +280,14 @@ Datos: archivos públicos de Binance, funding desde 2020 (105 símbolos en el pa
 | F - E (pareado) | +0.045 % | [-0.134 %, +0.213 %] | | |
 
 Conclusión: el funding **no mejora de forma significativa** al modelo, y E mismo no es distinguible de cero con 6 años de datos (por año: 2022 +0.53 %, 2023 -0.39 %, 2024 +0.17 %, 2025 +1.00 %, 2026 +0.11 %). Antes de 2024-09 (datos nuevos): E +0.14 % [-0.61 %, +0.90 %]. El selector no lo aprueba. El open interest (variantes O/FO) sigue pendiente de la descarga.
+
+## 15. Simulación del bot paper día a día con 6 años de datos (fuera de muestra)
+
+`bots/xs_daily/test_paper_sim.py --data data/ohlcv_daily_long.pkl --start 2025-01-01`: el modelo (variante D del bot) se entrena solo con datos hasta 2024-12-31 y NO se re-entrena; luego opera 644 días con un exchange simulado (entrada al open del día con ask/bid ± slippage, comisión de salida 0.05 %). Contabilidad verificada de forma independiente: 0 errores en 637 cohortes cerradas.
+
+- Retorno medio por cohorte de 7 d: **+0.344 %** (sin la comisión de entrada, ≈ -0.05 % del capital de la cohorte → ≈ +0.29 % neto). Bootstrap por bloques de 7 d: IC95 % [+0.01 %, +0.65 %]; 59 % de cohortes positivas.
+- Por trimestre: 25Q1 +0.75 %, 25Q2 -0.04 %, 25Q3 +0.43 %, 25Q4 +0.28 %, 26Q1 +0.42 %, 26Q2 -0.51 %, 26Q3 +1.08 %.
+- Peor cohorte -11.6 %, mejor +22.8 %.
+- Es consistente con el hallazgo de la sección 14 (≈ +0.3 % por cohorte, ventaja pequeña y marginal). El extremo inferior del IC apenas supera cero y el periodo coincide con el mejor año del modelo (2025), así que NO se considera confirmado: falta validación en vivo.
+
+Paper trading en vivo (`run_paper.py --force`, `resumen_paper.py`): su único propósito es acumular evidencia real sin riesgo; con cohortes diarias solapadas hacen falta ~7 meses (30 cohortes independientes) para concluir algo.
