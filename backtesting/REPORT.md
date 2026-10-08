@@ -268,3 +268,15 @@ Estado verificado:
 Advertencias para interpretar el resultado real:
 - **Contaminación**: Kronos no publica su fecha de corte; el periodo antiguo pudo estar en su preentrenamiento y daría una mejora falsa. Solo las fechas posteriores al corte son una prueba limpia; se debe mirar el resultado por año y compararlo con el control de etiquetas barajadas.
 - Se evalúa con el mismo juicio estricto: IC95% inferior > 0 tras costos y mejora pareada significativa frente a E; si no, no se opera.
+
+## 14. Funding real de Binance (127 símbolos, 2020-2026) en el modelo diario
+
+Datos: archivos públicos de Binance, funding desde 2020 (105 símbolos en el panel, 1725 cohortes de 7 d desde 2022-01, K = 12 %, re-entrenamiento cada 180 d, costo 0.14 % ida/vuelta). Resultado de la corrida del usuario:
+
+| | neto por cohorte | IC95 % | Sharpe | maxDD |
+|---|---|---|---|---|
+| E (sin derivados) | +0.292 % | [-0.234 %, +0.809 %] | 0.34 | -38 % |
+| F (E + funding) | +0.337 % | [-0.226 %, +0.867 %] | 0.38 | -43 % |
+| F - E (pareado) | +0.045 % | [-0.134 %, +0.213 %] | | |
+
+Conclusión: el funding **no mejora de forma significativa** al modelo, y E mismo no es distinguible de cero con 6 años de datos (por año: 2022 +0.53 %, 2023 -0.39 %, 2024 +0.17 %, 2025 +1.00 %, 2026 +0.11 %). Antes de 2024-09 (datos nuevos): E +0.14 % [-0.61 %, +0.90 %]. El selector no lo aprueba. El open interest (variantes O/FO) sigue pendiente de la descarga.
