@@ -15,3 +15,8 @@ bots/xs_daily/analysis_cache.json
 bots/xs_daily/demo_state.json
 bots/xs_daily/demo_log.csv
 bots/xs_daily/demo_analysis.json
+bots/xs_daily/cuenta_manual.json
+bots/xs_daily/cuenta_manual.json.tmp
+bots/xs_daily/demo_manual.json
+bots/xs_daily/demo_manual.json.tmp
+bots/xs_daily/backups/

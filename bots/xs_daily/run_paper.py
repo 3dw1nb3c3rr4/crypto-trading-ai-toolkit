@@ -21,6 +21,8 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import funding_util  # noqa: E402
+import universo  # noqa: E402
 import xs_core  # noqa: E402
 
 FEE, SLIP = 0.0005, 0.0002
@@ -72,15 +74,22 @@ def step(state, ex, bundle, today, log=print):
         if age < bundle["H"]:
             keep.append(c)
             continue
-        pnl = 0.0
+        pnl, fund, fund_ok = 0.0, 0.0, True
+        t_open = int(pd.Timestamp(c["opened"], tz="UTC").value // 10**6)
         for p in c["positions"]:
             px = exec_price(ex, p["symbol"], p["side"], opening=False) or p["entry"]
             sgn = 1 if p["side"] == "LONG" else -1
             pnl += p["notional"] * sgn * (px / p["entry"] - 1) - p["notional"] * FEE
+            if hasattr(ex, "fetch_funding_rate_history"):       # funding pagado/cobrado durante los 7 días
+                f, ok = funding_util.funding_cost(ex, p["symbol"], p["side"], p["notional"], t_open, int(pd.Timestamp(today, tz="UTC").value // 10**6))
+                fund += f
+                fund_ok &= ok
+        pnl -= fund
         realized += pnl
         state["closed"].append({"opened": c["opened"], "closed": today, "pnl": pnl, "capital": c["capital"],
-                                "ret": pnl / c["capital"] if c["capital"] else 0.0})
-        log(f"  cohorte del {c['opened']} cerrada: PnL {pnl:+.2f} ({pnl / c['capital']:+.2%})")
+                                "ret": pnl / c["capital"] if c["capital"] else 0.0, "funding": fund, "funding_ok": fund_ok})
+        log(f"  cohorte del {c['opened']} cerrada: PnL {pnl:+.2f} ({pnl / c['capital']:+.2%}) | funding {-fund:+.2f}"
+            + ("" if fund_ok else " (sin datos de funding para algún símbolo)"))
     state["cohorts"] = keep
     state["equity"] += realized
     if any(c["opened"] == today for c in state["cohorts"]):
@@ -92,7 +101,7 @@ def step(state, ex, bundle, today, log=print):
         log("  datos insuficientes para elegir posiciones; no se abre cohorte")
         return realized
     cap = state["equity"] / bundle["H"]
-    notional = cap * 0.5 / bundle["K"]
+    notional = cap * 0.5 / len(longs)                       # K puede ser menor con universos pequeños
     positions = []
     for side, syms in (("LONG", longs), ("SHORT", shorts)):
         for s in syms:
@@ -118,6 +127,7 @@ def unrealized(state, ex):
 
 
 def main():
+    global FEE, SLIP
     import ccxt
     ap = argparse.ArgumentParser()
     ap.add_argument("--exchange", default="binanceusdm")
@@ -126,6 +136,9 @@ def main():
     ap.add_argument("--log", default=os.path.join(HERE, "paper_log.csv"))
     ap.add_argument("--capital", type=float, default=1000.0)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--universe", default="both", choices=["crypto", "stocks", "both"], help="qué opera el bot: cripto, acciones tokenizadas o ambos")
+    ap.add_argument("--fee", type=float, default=FEE, help="comisión taker por lado")
+    ap.add_argument("--slip", type=float, default=SLIP, help="deslizamiento por lado")
     a = ap.parse_args()
     sel_path = os.path.join(xs_core.ROOT, "strategy_selection.json")
     sel = json.load(open(sel_path)) if os.path.exists(sel_path) else {}
@@ -144,7 +157,9 @@ def main():
                 sys.exit(f"Sin conexión con {a.exchange} tras 6 intentos ({type(e).__name__}). Revisa internet/VPN/DNS y vuelve a ejecutar.")
             print(f"  sin conexión ({type(e).__name__}), reintento {k + 1}/5 en {5 * (k + 1)} s ...", flush=True)
             time.sleep(5 * (k + 1))
-    bundle["symbols"] = [s for s in bundle["symbols"] if s in ex.markets]
+    FEE, SLIP = a.fee, a.slip
+    bundle["symbols"] = universo.filter_symbols([s for s in bundle["symbols"] if s in ex.markets], a.universe, ex.markets)
+    print(f"universo: {a.universe} -> {len(bundle['symbols'])} símbolos | comisión {FEE:.4%} | deslizamiento {SLIP:.4%}")
     state = load_state(a.state, a.capital)
     today = time.strftime("%Y-%m-%d", time.gmtime())
     step(state, ex, bundle, today)

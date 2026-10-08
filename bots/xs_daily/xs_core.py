@@ -44,17 +44,22 @@ def train(hist: dict):
                 symbols=list(hist), n_rows=int(len(y)))
 
 
+def k_for(K, n_valid):
+    """Monedas por lado: K normal, pero con universos pequeños (p. ej. solo acciones) a lo sumo 1/4 de las válidas."""
+    return int(max(2, min(K, n_valid // 4)))
+
+
 def pick(bundle, hist: dict):
     """Señal con la última vela diaria cerrada: (fecha, longs, shorts, predicciones)."""
     idx, P, F, liq_ok = features(hist)
     X = np.stack([F[k].to_numpy()[-1] for k in bundle["features"]], axis=-1)
     cols = list(P["close"].columns)
     valid = liq_ok[-1] & (np.isfinite(X).sum(axis=1) > 0) & np.isfinite(P["close"].to_numpy()[-1])
-    if valid.sum() < 2 * bundle["K"] + 10:
+    if valid.sum() < 8:
         return idx[-1], [], [], {}
     iv = np.where(valid)[0]
     p = bundle["model"].predict(X[iv])
     order = iv[np.argsort(p)]
-    k = bundle["K"]
+    k = k_for(bundle["K"], len(iv))
     preds = {cols[i]: float(pv) for i, pv in zip(iv, p)}
     return idx[-1], [cols[i] for i in order[-k:]], [cols[i] for i in order[:k]], preds

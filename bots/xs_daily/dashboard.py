@@ -1,17 +1,18 @@
-"""Dashboard web del bot cross-sectional diario (PAPER: no envía órdenes reales).
+"""Panel de trading local (estilo TradingView) del proyecto Cerebro.
 
-Uso:   python bots/xs_daily/dashboard.py                 -> abre http://127.0.0.1:8765 en el navegador
-       python bots/xs_daily/dashboard.py --exchange okx
-       python bots/xs_daily/dashboard.py --demo          -> sin internet: usa data/ohlcv_daily_long.pkl y un estado de ejemplo
-Requiere: pandas, numpy, scikit-learn, ccxt (lo mismo que el bot). El gráfico es TradingView Lightweight Charts (Apache-2.0),
-incluido en bots/xs_daily/web/ para que funcione sin CDN.
+Uso:   python bots/xs_daily/dashboard.py            -> abre http://127.0.0.1:8765 en el navegador
+       python bots/xs_daily/dashboard.py --demo     -> sin internet: datos locales y cuentas de ejemplo (no toca tus archivos)
 
-Qué muestra:
-  - Velas tipo TradingView (1h / 4h / 1d) de cualquier moneda, con las entradas del bot marcadas y precio en vivo.
-  - Posiciones abiertas con PnL en vivo (se refresca solo), equity, cohortes cerradas y estadística honesta.
-  - Análisis del modelo: ranking de todas las monedas, por qué eligió cada una (contribución de cada factor medida
-    quitando ese factor y viendo cuánto cambia la predicción), importancia global y contexto de mercado.
-  - Botones para ejecutar el paper de hoy y reentrenar (corren run_paper.py / train.py en un proceso aparte).
+Funciones:
+  - Velas TradingView (Lightweight Charts, Apache-2.0, incluida en web/) con precio en vivo, búsqueda de cualquier perpetuo,
+    funding actual y cuenta regresiva, entradas marcadas.
+  - Trading MANUAL como un exchange: mercado / límite, apalancamiento, valor de la posición, TP/SL, cierre total o parcial,
+    cancelar órdenes. Modo PAPER (simulado con comisiones, deslizamiento, funding real y liquidación), DEMO (cuenta demo del
+    exchange) o REAL (tu cuenta, con topes de seguridad y confirmación). Claves API guardadas solo en tu PC (config_local.py).
+  - Bot de la estrategia (siempre en paper): ejecutar hoy, reentrenar, cerrar posiciones del bot antes de tiempo, equity,
+    cohortes con funding, ranking del modelo y por qué eligió cada moneda.
+  - Universo: solo cripto, solo acciones/TradFi tokenizadas o ambos. Reinicio de cuentas con copia de seguridad.
+El servidor solo escucha en 127.0.0.1 (tu PC).
 """
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ import argparse
 import json
 import os
 import pickle
+import shutil
 import subprocess
 import sys
 import threading
@@ -32,6 +34,11 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import config_local as cl  # noqa: E402
+import cuenta_paper as cp  # noqa: E402
+import cuenta_real as cr  # noqa: E402
+import funding_util  # noqa: E402
+import universo  # noqa: E402
 import xs_core  # noqa: E402
 
 ROOT = xs_core.ROOT
@@ -40,6 +47,7 @@ STATE = os.path.join(HERE, "paper_state.json")
 LOG = os.path.join(HERE, "paper_log.csv")
 MODEL = os.path.join(HERE, "model_xs_D.pkl")
 ANALYSIS = os.path.join(HERE, "analysis_cache.json")
+MANUAL = os.path.join(HERE, "cuenta_manual.json")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 BACKTEST_REF = dict(mean=0.0029, lo=-0.0023, hi=0.0081, note="backtest 6 años, 1725 cohortes")
 
@@ -78,7 +86,7 @@ def describe(f):
     return "Otro", f
 
 
-# ------------------------------------------------------------------ fuente de mercado (exchange real o datos locales en --demo)
+# ------------------------------------------------------------------ fuente de mercado (datos públicos; exchange real o datos locales en --demo)
 class LiveSource:
     def __init__(self, exchange):
         import ccxt
@@ -92,10 +100,15 @@ class LiveSource:
             if not self.markets_ok:
                 self.ex.load_markets()
                 self.markets_ok = True
+        return self.ex.markets
+
+    def markets(self):
+        m = self._markets()
+        return {s: v for s, v in m.items() if v.get("swap") and v.get("linear") and v.get("quote") == "USDT" and v.get("active", True)}
 
     def tickers(self, syms):
-        self._markets()
-        syms = [s for s in syms if s in self.ex.markets]
+        mk = self._markets()
+        syms = [s for s in syms if s in mk]
         out = {}
         if not syms:
             return out
@@ -111,7 +124,9 @@ class LiveSource:
         for s, v in t.items():
             px = v.get("last") or v.get("close")
             if px:
-                out[s] = dict(price=float(px), change=float(v.get("percentage") or 0.0) / 100.0)
+                out[s] = dict(price=float(px), bid=float(v.get("bid") or px), ask=float(v.get("ask") or px),
+                              change=float(v.get("percentage") or 0.0) / 100.0, high=v.get("high"), low=v.get("low"),
+                              volume=v.get("quoteVolume"))
         return out
 
     def candles(self, sym, tf, limit=500):
@@ -121,12 +136,23 @@ class LiveSource:
 
     def history(self, syms, days=150):
         import run_paper as rp
-        self._markets()
-        return rp.fetch_history(self.ex, [s for s in syms if s in self.ex.markets], days)
+        mk = self._markets()
+        return rp.fetch_history(self.ex, [s for s in syms if s in mk], days)
+
+    def funding_rate(self, sym):
+        try:
+            f = self.ex.fetch_funding_rate(sym)
+            return dict(rate=f.get("fundingRate"), next=f.get("fundingTimestamp") or f.get("nextFundingTimestamp"),
+                        mark=f.get("markPrice"), interval=f.get("interval"))
+        except Exception:
+            return {}
+
+    def funding_events(self, sym, since_ms, until_ms):
+        return funding_util.funding_events(self.ex, sym, since_ms, until_ms)
 
 
 class DemoSource:
-    """Sin red: velas diarias del archivo local; el 'precio en vivo' es el último cierre con un pequeño ruido."""
+    """Sin red: velas diarias del archivo local; el 'precio en vivo' es el último cierre con un pequeño ruido; funding 0.01 %/8 h."""
 
     def __init__(self, path):
         from engine import load_universe
@@ -134,12 +160,18 @@ class DemoSource:
         self.name = "demo (datos locales)"
         self.rng = np.random.default_rng(0)
 
+    def markets(self):
+        return {s: {"symbol": s, "info": {}, "limits": {"leverage": {"max": 50}}} for s in self.uni}
+
     def tickers(self, syms):
         out = {}
         for s in syms:
             if s in self.uni:
-                c = self.uni[s]["close"].to_numpy()
-                out[s] = dict(price=float(c[-1] * (1 + self.rng.normal(0, 0.001))), change=float(c[-1] / c[-2] - 1))
+                df = self.uni[s]
+                c = df["close"].to_numpy()
+                p = float(c[-1] * (1 + self.rng.normal(0, 0.001)))
+                out[s] = dict(price=p, bid=p * 0.9998, ask=p * 1.0002, change=float(c[-1] / c[-2] - 1), high=float(df.high.iloc[-1]),
+                              low=float(df.low.iloc[-1]), volume=float(df.volume.iloc[-1] * c[-1]))
         return out
 
     def candles(self, sym, tf, limit=500):
@@ -149,6 +181,14 @@ class DemoSource:
 
     def history(self, syms, days=150):
         return {s: self.uni[s].tail(days + 1).reset_index(drop=True) for s in syms if s in self.uni}
+
+    def funding_rate(self, sym):
+        h8 = 8 * 3600_000
+        return dict(rate=0.0001, next=(int(time.time() * 1000) // h8 + 1) * h8, mark=None, interval="8h")
+
+    def funding_events(self, sym, since_ms, until_ms):
+        h8 = 8 * 3600_000
+        return [(t, 0.0001) for t in range((since_ms // h8 + 1) * h8, until_ms + 1, h8)]
 
 
 # ------------------------------------------------------------------ análisis del modelo
@@ -169,7 +209,7 @@ def compute_analysis(bundle, hist, progress=lambda *_: None):
         Xa[:, j] = 0.5
         contrib[:, j] = pred - mdl.predict(Xa)
     order = np.argsort(-pred)
-    K = bundle["K"]
+    K = xs_core.k_for(bundle["K"], len(iv))
     longs, shorts = set(order[:K]), set(order[-K:])
     c, v = P["close"], P["volume"]
     r1, r7, r30 = c.pct_change(1).iloc[-1], c.pct_change(7).iloc[-1], c.pct_change(30).iloc[-1]
@@ -215,14 +255,21 @@ def compute_analysis(bundle, hist, progress=lambda *_: None):
 
 # ------------------------------------------------------------------ estado de la app
 class Hub:
-    def __init__(self, source, capital, demo=False):
-        self.src, self.capital, self.demo = source, capital, demo
+    def __init__(self, cfg, demo=False, data=None):
+        self.cfg, self.demo, self.data = cfg, demo, data
+        self.src = DemoSource(data) if demo else LiveSource(cfg["exchange"])
         self.cache = {}
         self.analysis = json.load(open(ANALYSIS)) if os.path.exists(ANALYSIS) else None
         self.an_status = dict(state="idle", msg="")
         self.job = dict(running=False, name="", lines=[], code=None)
         self.lock = threading.Lock()
+        self.events = []                                     # avisos para el navegador (llenados, TP/SL, liquidaciones, funding)
+        self.paper = cp.PaperAccount(MANUAL, cfg)
+        self.exacc = None
+        self.last_funding_check = 0.0
+        threading.Thread(target=self._engine, daemon=True).start()
 
+    # ---------------------------------------------------------------- utilidades
     def cached(self, key, ttl, fn):
         now = time.time()
         hit = self.cache.get(key)
@@ -232,57 +279,154 @@ class Hub:
         self.cache[key] = (now, val)
         return val
 
-    def state(self):
-        st = json.load(open(STATE)) if os.path.exists(STATE) else {"equity": self.capital, "cohorts": [], "closed": []}
+    def note(self, msg, level="info"):
+        self.events.append(dict(t=time.time(), msg=msg, level=level))
+        self.events = self.events[-200:]
+
+    def account(self):
+        """Cuenta manual activa: la simulada (paper) o la del exchange (demo/real) con tus claves."""
+        if self.cfg["mode"] == "paper":
+            return self.paper
+        if self.exacc is None:
+            self.exacc = cr.ExchangeAccount(self.cfg)
+        return self.exacc
+
+    def markets(self):
+        return self.cached("markets", 3600, self.src.markets)
+
+    def set_config(self, new):
+        old = self.cfg
+        cfg = cl.save_config({**old, **new})
+        self.cfg = cfg
+        self.paper.cfg = cfg
+        if cfg["exchange"] != old["exchange"] and not self.demo:
+            self.src = LiveSource(cfg["exchange"])
+            self.cache.clear()
+        if cfg["exchange"] != old["exchange"] or cfg["mode"] != old["mode"]:
+            self.exacc = None
+        if cfg["universe"] != old["universe"]:
+            self.start_analysis(force=True)
+        return cfg
+
+    # ---------------------------------------------------------------- motor de la cuenta paper manual
+    def _engine(self):
+        while True:
+            try:
+                if self.cfg["mode"] == "paper":
+                    syms = set(self.paper.s["positions"]) | {o["symbol"] for o in self.paper.s["orders"]}
+                    if syms:
+                        quotes = self.src.tickers(sorted(syms))
+                        for e in self.paper.on_tick(quotes):
+                            self.note(e, "warn" if "LIQUID" in e or "stop" in e else "ok")
+                        if time.time() - self.last_funding_check > 600:   # funding real cada 10 min
+                            self.last_funding_check = time.time()
+                            now = int(time.time() * 1000)
+                            for sym, p in list(self.paper.s["positions"].items()):
+                                ev = self.src.funding_events(sym, p["last_funding"], now)
+                                if ev and sym in quotes:
+                                    c = self.paper.apply_funding(sym, ev, quotes[sym]["price"])
+                                    self.note(f"funding {sym.split('/')[0]}: {'pagaste' if c > 0 else 'cobraste'} {abs(c):.4f} USDT", "info")
+            except Exception as e:                           # noqa: BLE001
+                self.note(f"motor paper: {type(e).__name__}: {str(e)[:120]}", "err")
+            time.sleep(3)
+
+    # ---------------------------------------------------------------- bot (estrategia)
+    def bot_state(self):
+        st = json.load(open(STATE)) if os.path.exists(STATE) else {"equity": self.cfg["bot_capital"], "cohorts": [], "closed": []}
         log = pd.read_csv(LOG).to_dict("records") if os.path.exists(LOG) else []
-        cl = st["closed"]
-        r = np.array([c["ret"] for c in cl]) if cl else np.array([])
+        cl_ = st["closed"]
+        r = np.array([c["ret"] for c in cl_]) if cl_ else np.array([])
         stats = None
         if len(r):
             n_eff = max(len(r) / 7, 1)
             se = r.std(ddof=1) / np.sqrt(n_eff) if len(r) > 1 else float("nan")
             stats = dict(mean=float(r.mean()), lo=float(r.mean() - 1.96 * se), hi=float(r.mean() + 1.96 * se), n=len(r),
-                         n_eff=n_eff, win=float((r > 0).mean()), best=float(r.max()), worst=float(r.min()))
-        model = None
-        if os.path.exists(MODEL):
-            model = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(MODEL)))
-        return dict(state=st, log=log, stats=stats, capital=self.capital, model=model, backtest=BACKTEST_REF,
-                    source=self.src.name, demo=self.demo, today_done=any(c["opened"] == time.strftime("%Y-%m-%d", time.gmtime())
-                                                                          for c in st["cohorts"]))
+                         n_eff=n_eff, win=float((r > 0).mean()), best=float(r.max()), worst=float(r.min()),
+                         funding=float(sum(c.get("funding", 0.0) for c in cl_)))
+        model = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(MODEL))) if os.path.exists(MODEL) else None
+        return dict(state=st, log=log, stats=stats, capital=self.cfg["bot_capital"], model=model, backtest=BACKTEST_REF,
+                    today_done=any(c["opened"] == time.strftime("%Y-%m-%d", time.gmtime()) for c in st["cohorts"]))
 
+    def bot_close(self, symbol, opened):
+        """Cierre anticipado de una posición del bot (paper): precio vivo + deslizamiento + comisión + funding real."""
+        st = json.load(open(STATE))
+        for c in st["cohorts"]:
+            if c["opened"] != opened:
+                continue
+            for p in list(c["positions"]):
+                if p["symbol"] != symbol:
+                    continue
+                q = self.src.tickers([symbol]).get(symbol)
+                if not q:
+                    raise ValueError("sin precio para cerrar")
+                long = p["side"] == "LONG"
+                px = q["bid"] * (1 - self.cfg["slippage"]) if long else q["ask"] * (1 + self.cfg["slippage"])
+                pnl = p["notional"] * (1 if long else -1) * (px / p["entry"] - 1) - p["notional"] * self.cfg["taker"]
+                t0 = int(pd.Timestamp(opened, tz="UTC").value // 10**6)
+                fund = sum((1 if long else -1) * p["notional"] * r for _, r in self.src.funding_events(symbol, t0, int(time.time() * 1000)))
+                pnl -= fund
+                c["positions"].remove(p)
+                st["equity"] += pnl
+                st.setdefault("early_closed", []).append(dict(symbol=symbol, side=p["side"], opened=opened, closed=time.strftime("%Y-%m-%d %H:%M"),
+                                                              entry=p["entry"], exit=px, pnl=pnl, funding=fund))
+                json.dump(st, open(STATE, "w"), indent=1)
+                return f"posición del bot {symbol.split('/')[0]} cerrada antes de tiempo: PnL {pnl:+.2f} USDT (funding {-fund:+.4f})"
+        raise ValueError("posición no encontrada")
+
+    # ---------------------------------------------------------------- precios / velas / info
     def symbols_of_interest(self):
         st = json.load(open(STATE)) if os.path.exists(STATE) else {"cohorts": []}
         s = {p["symbol"] for c in st["cohorts"] for p in c["positions"]}
+        s |= set(self.paper.s["positions"]) | {o["symbol"] for o in self.paper.s["orders"]}
         if self.analysis:
             s |= {r["symbol"] for r in self.analysis["ranking"][:15]} | {r["symbol"] for r in self.analysis["ranking"][-15:]}
         s.add("BTC/USDT:USDT")
         return sorted(s)
 
     def prices(self, extra=None):
-        syms = self.symbols_of_interest() + ([extra] if extra else [])
-        return self.cached(("px", tuple(sorted(set(syms)))), 5, lambda: self.src.tickers(sorted(set(syms))))
+        syms = sorted(set(self.symbols_of_interest() + ([extra] if extra else [])))
+        return self.cached(("px", tuple(syms)), 4, lambda: self.src.tickers(syms))
 
     def candles(self, sym, tf):
-        ttl = 20 if tf in ("1m", "5m", "15m", "1h") else 60
+        ttl = 15 if tf in ("1m", "5m", "15m", "1h") else 60
         return self.cached(("c", sym, tf), ttl, lambda: self.src.candles(sym, tf if not self.demo else "1d"))
 
+    def symbol_info(self, sym):
+        m = self.markets().get(sym, {})
+        t = self.src.tickers([sym]).get(sym, {})
+        f = self.cached(("f", sym), 60, lambda: self.src.funding_rate(sym))
+        lev = ((m.get("limits") or {}).get("leverage") or {}).get("max")
+        lim = m.get("limits") or {}
+        return dict(symbol=sym, cls=universo.classify(sym, m), ticker=t, funding=f, max_leverage=lev,
+                    min_cost=(lim.get("cost") or {}).get("min"), contract_size=m.get("contractSize"))
+
+    def market_list(self):
+        mk = self.markets()
+        return sorted([dict(symbol=s, cls=universo.classify(s, m)) for s, m in mk.items()
+                       if universo.allowed(s, self.cfg["universe"], m)], key=lambda x: x["symbol"])
+
+    # ---------------------------------------------------------------- análisis del modelo
     def start_analysis(self, force=False):
         with self.lock:
             if self.an_status["state"] == "running":
                 return
-            if not force and self.analysis and self.analysis.get("generated", "")[:10] == time.strftime("%Y-%m-%d"):
+            fresh = self.analysis and self.analysis.get("generated", "")[:10] == time.strftime("%Y-%m-%d") \
+                and self.analysis.get("universe", "both") == self.cfg["universe"]
+            if not force and fresh:
                 return
             if not os.path.exists(MODEL):
-                self.an_status = dict(state="error", msg="No hay modelo entrenado: pulsa «Reentrenar modelo».")
+                self.an_status = dict(state="error", msg="No hay modelo entrenado: pulsa «Reentrenar».")
                 return
             self.an_status = dict(state="running", msg="descargando velas diarias de todas las monedas…")
 
         def work():
             try:
                 bundle = pickle.load(open(MODEL, "rb"))
-                hist = self.src.history(bundle["symbols"])
+                syms = universo.filter_symbols(bundle["symbols"], self.cfg["universe"], self.markets())
+                hist = self.src.history(syms)
                 self.an_status["msg"] = f"calculando modelo sobre {len(hist)} monedas…"
                 a = compute_analysis(bundle, hist, progress=lambda m: self.an_status.update(msg=m))
+                a["universe"] = self.cfg["universe"]
                 json.dump(a, open(ANALYSIS, "w"))
                 self.analysis = a
                 self.an_status = dict(state="done", msg="")
@@ -290,6 +434,7 @@ class Hub:
                 self.an_status = dict(state="error", msg=f"{type(e).__name__}: {str(e)[:200]}")
         threading.Thread(target=work, daemon=True).start()
 
+    # ---------------------------------------------------------------- tareas (bot / reentrenar)
     def run_job(self, name, args):
         if self.job["running"]:
             return False
@@ -312,8 +457,35 @@ class Hub:
         threading.Thread(target=work, daemon=True).start()
         return True
 
+    def bot_args(self):
+        c = self.cfg
+        return [os.path.join(HERE, "run_paper.py"), "--force", "--capital", str(c["bot_capital"]), "--exchange", c["exchange"],
+                "--universe", c["universe"], "--fee", str(c["taker"]), "--slip", str(c["slippage"]), "--state", STATE, "--log", LOG]
 
-def make_handler(hub: Hub, exchange):
+    # ---------------------------------------------------------------- reinicio con copia de seguridad
+    def reset(self, what, capital):
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        bk = os.path.join(HERE, "backups", stamp)
+        os.makedirs(bk, exist_ok=True)
+        for f in (STATE, LOG, MANUAL):
+            if os.path.exists(f):
+                shutil.copy2(f, bk)
+        done = []
+        if what in ("bot", "all"):
+            for f in (STATE, LOG):
+                if os.path.exists(f):
+                    os.remove(f)
+            self.cfg = cl.save_config({**self.cfg, "bot_capital": capital})
+            done.append(f"bot reiniciado con {capital:.2f} USDT")
+        if what in ("manual", "all"):
+            self.cfg = cl.save_config({**self.cfg, "manual_capital": capital})
+            self.paper.cfg = self.cfg
+            self.paper.reset(capital)
+            done.append(f"cuenta manual reiniciada con {capital:.2f} USDT")
+        return " | ".join(done) + f" (copia de seguridad en backups/{stamp})"
+
+
+def make_handler(hub: Hub):
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -327,6 +499,10 @@ def make_handler(hub: Hub, exchange):
             self.end_headers()
             self.wfile.write(data)
 
+        def _local_only(self):                               # el servidor solo escucha en 127.0.0.1; doble control del Origin
+            o = self.headers.get("Origin")
+            return not o or o.startswith(("http://127.0.0.1", "http://localhost"))
+
         def do_GET(self):
             u = urlparse(self.path)
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
@@ -337,32 +513,121 @@ def make_handler(hub: Hub, exchange):
                     f = os.path.join(WEB, os.path.basename(u.path))
                     return self._send(200, open(f, "rb").read(), "application/javascript" if f.endswith(".js") else "text/plain")
                 if u.path == "/api/state":
-                    return self._send(200, hub.state())
+                    return self._send(200, dict(bot=hub.bot_state(), cfg=hub.cfg, demo=hub.demo, source=hub.src.name,
+                                                events=[e for e in hub.events if e["t"] > float(q.get("since", 0))]))
+                if u.path == "/api/account":
+                    acc = hub.account()
+                    syms = list(hub.paper.s["positions"]) if hub.cfg["mode"] == "paper" else []
+                    quotes = hub.src.tickers(syms) if syms else {}
+                    return self._send(200, hub.cached(("acc", hub.cfg["mode"]), 2 if hub.cfg["mode"] == "paper" else 4, lambda: acc.snapshot(quotes)))
                 if u.path == "/api/prices":
                     return self._send(200, hub.prices(q.get("extra")))
                 if u.path == "/api/candles":
                     return self._send(200, hub.candles(q["symbol"], q.get("tf", "1h")))
+                if u.path == "/api/symbol":
+                    return self._send(200, hub.symbol_info(q["symbol"]))
+                if u.path == "/api/markets":
+                    return self._send(200, hub.market_list())
+                if u.path == "/api/config":
+                    return self._send(200, dict(cfg=hub.cfg, keys=cl.keys_status(hub.cfg["exchange"], hub.cfg["mode"]),
+                                                keys_demo=cl.keys_status(hub.cfg["exchange"], "demo"),
+                                                keys_real=cl.keys_status(hub.cfg["exchange"], "real"), config_dir=cl.DIR))
                 if u.path == "/api/analysis":
                     if q.get("refresh"):
                         hub.start_analysis(force=True)
-                    elif hub.analysis is None or hub.analysis.get("generated", "")[:10] != time.strftime("%Y-%m-%d"):
+                    else:
                         hub.start_analysis()
                     return self._send(200, dict(status=hub.an_status, analysis=hub.analysis))
                 if u.path == "/api/job":
                     return self._send(200, hub.job)
+                if u.path == "/api/export":
+                    rows = hub.paper.s["history"] if q.get("what") == "manual" else hub.bot_state()["state"]["closed"]
+                    csv = pd.DataFrame(rows).to_csv(index=False).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv")
+                    self.send_header("Content-Disposition", f"attachment; filename=historial_{q.get('what', 'bot')}.csv")
+                    self.end_headers()
+                    self.wfile.write(csv)
+                    return None
                 return self._send(404, {"error": "no encontrado"})
             except Exception as e:                           # noqa: BLE001
                 return self._send(500, {"error": f"{type(e).__name__}: {str(e)[:300]}"})
 
         def do_POST(self):
+            if not self._local_only():
+                return self._send(403, {"error": "origen no permitido"})
             u = urlparse(self.path)
-            if u.path == "/api/run":
-                ok = hub.run_job("run", [os.path.join(HERE, "run_paper.py"), "--force", "--capital", str(hub.capital), "--exchange", exchange])
-            elif u.path == "/api/train":
-                ok = hub.run_job("train", [os.path.join(HERE, "train.py")])
-            else:
+            n = int(self.headers.get("Content-Length") or 0)
+            b = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            try:
+                if u.path == "/api/run":
+                    ok = hub.run_job("run", hub.bot_args())
+                    return self._send(200 if ok else 409, {"started": ok})
+                if u.path == "/api/train":
+                    ok = hub.run_job("train", [os.path.join(HERE, "train.py")])
+                    return self._send(200 if ok else 409, {"started": ok})
+                if u.path == "/api/config":
+                    new = b.get("cfg", {})
+                    if new.get("mode") == "real" and hub.cfg["mode"] != "real" and b.get("confirm") != "CONFIRMO":
+                        raise ValueError("para activar el modo REAL escribe CONFIRMO")
+                    cfg = hub.set_config(new)
+                    return self._send(200, {"ok": True, "cfg": cfg, "msg": "configuración guardada"})
+                if u.path == "/api/keys":
+                    where = cl.save_keys(hub.cfg["exchange"], b.get("mode", hub.cfg["mode"]), b.get("apiKey", ""), b.get("secret", ""), b.get("password", ""))
+                    hub.exacc = None
+                    return self._send(200, {"ok": True, "msg": f"claves guardadas en tu PC ({where})"})
+                if u.path == "/api/keys/delete":
+                    cl.delete_keys(hub.cfg["exchange"], b.get("mode", hub.cfg["mode"]))
+                    hub.exacc = None
+                    return self._send(200, {"ok": True, "msg": "claves borradas"})
+                if u.path == "/api/keys/test":
+                    cfg = {**hub.cfg, "mode": b.get("mode", hub.cfg["mode"])}
+                    if cfg["mode"] == "paper":
+                        raise ValueError("elige demo o real para probar claves")
+                    r = cr.ExchangeAccount(cfg).test()
+                    return self._send(200, {"ok": True, "msg": f"conexión OK · saldo USDT total {r['total']} · libre {r['free']}"})
+                if u.path == "/api/order":
+                    mode = hub.cfg["mode"]
+                    if mode == "real" and not b.get("confirm"):
+                        raise ValueError("las órdenes reales deben confirmarse")
+                    sym = b["symbol"]
+                    quote = hub.src.tickers([sym]).get(sym)
+                    if not quote:
+                        raise ValueError("sin precio en vivo para ese símbolo")
+                    tp = float(b["tp"]) if b.get("tp") else None
+                    sl = float(b["sl"]) if b.get("sl") else None
+                    msg = hub.account().place(sym, b["side"], b.get("type", "market"), float(b["usdt"]), int(b["leverage"]), quote,
+                                              float(b["price"]) if b.get("price") else None, tp, sl)
+                    hub.note(f"[{mode.upper()}] {msg}", "ok")
+                    hub.cache.pop(("acc", mode), None)
+                    return self._send(200, {"ok": True, "msg": msg})
+                if u.path == "/api/close":
+                    sym = b["symbol"]
+                    if b.get("source") == "bot":
+                        msg = hub.bot_close(sym, b["opened"])
+                    else:
+                        quote = hub.src.tickers([sym]).get(sym)
+                        msg = hub.account().close(sym, float(b.get("fraction", 1.0)), quote)
+                    hub.note(msg, "ok")
+                    hub.cache.pop(("acc", hub.cfg["mode"]), None)
+                    return self._send(200, {"ok": True, "msg": msg})
+                if u.path == "/api/cancel":
+                    acc = hub.account()
+                    msg = acc.cancel(b["id"]) if hub.cfg["mode"] == "paper" else acc.cancel(b["id"], b["symbol"])
+                    hub.cache.pop(("acc", hub.cfg["mode"]), None)
+                    return self._send(200, {"ok": True, "msg": msg})
+                if u.path == "/api/tpsl":
+                    if hub.cfg["mode"] != "paper":
+                        raise ValueError("en demo/real crea el TP/SL desde el formulario de orden o en el exchange")
+                    msg = hub.paper.set_tpsl(b["symbol"], float(b["tp"]) if b.get("tp") else None, float(b["sl"]) if b.get("sl") else None)
+                    return self._send(200, {"ok": True, "msg": msg})
+                if u.path == "/api/reset":
+                    msg = hub.reset(b.get("what", "manual"), float(b.get("capital", 1000)))
+                    hub.note(msg, "warn")
+                    return self._send(200, {"ok": True, "msg": msg})
                 return self._send(404, {"error": "no encontrado"})
-            return self._send(200 if ok else 409, {"started": ok})
+            except Exception as e:                           # noqa: BLE001
+                return self._send(400, {"ok": False, "error": f"{str(e)[:300]}" if isinstance(e, (ValueError, KeyError)) else f"{type(e).__name__}: {str(e)[:300]}"})
     return H
 
 
@@ -399,27 +664,30 @@ def build_demo_state(uni, capital, days=40, seed=7):
 
 
 def main():
-    global STATE, LOG, ANALYSIS
+    global STATE, LOG, ANALYSIS, MANUAL
     ap = argparse.ArgumentParser()
-    ap.add_argument("--exchange", default="binanceusdm")
-    ap.add_argument("--capital", type=float, default=1000.0)
+    ap.add_argument("--exchange", default=None, help="sobrescribe el exchange de la configuración")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--demo", action="store_true", help="sin internet: datos locales")
     ap.add_argument("--data", default=os.path.join(ROOT, "data", "ohlcv_daily_long.pkl"))
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
-    src = DemoSource(a.data) if a.demo else LiveSource(a.exchange)
-    if a.demo:                                               # el demo nunca toca tu estado real
-        STATE, LOG, ANALYSIS = (os.path.join(HERE, f) for f in ("demo_state.json", "demo_log.csv", "demo_analysis.json"))
-        if not os.path.exists(STATE):
-            st, lg = build_demo_state(src.uni, a.capital)
-            json.dump(st, open(STATE, "w"))
-            lg.to_csv(LOG, index=False)
-    hub = Hub(src, a.capital, a.demo)
+    cfg = cl.load_config()
+    if a.exchange:
+        cfg["exchange"] = a.exchange
+    if a.demo:                                               # el demo nunca toca tus archivos ni tus claves
+        STATE, LOG, ANALYSIS, MANUAL = (os.path.join(HERE, f) for f in ("demo_state.json", "demo_log.csv", "demo_analysis.json", "demo_manual.json"))
+        cfg["mode"] = "paper"
+    hub = Hub(cfg, a.demo, a.data)
+    if a.demo and not os.path.exists(STATE):
+        st, lg = build_demo_state(hub.src.uni, cfg["bot_capital"])
+        json.dump(st, open(STATE, "w"))
+        lg.to_csv(LOG, index=False)
     hub.start_analysis()
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(hub, a.exchange))
+    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(hub))
     url = f"http://127.0.0.1:{a.port}"
-    print(f"Dashboard en {url}  (Ctrl+C para cerrar) | fuente: {src.name} | MODO PAPER: no se envían órdenes reales")
+    print(f"Panel en {url}  (Ctrl+C para cerrar) | fuente: {hub.src.name} | modo de la cuenta manual: {cfg['mode'].upper()}")
+    print(f"Configuración y claves en {cl.DIR}")
     if not a.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try:
