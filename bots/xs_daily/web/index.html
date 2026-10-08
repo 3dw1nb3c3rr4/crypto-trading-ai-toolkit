@@ -42,7 +42,15 @@ header{display:flex;align-items:center;gap:18px;padding:8px 14px;border-bottom:1
 .actions{display:flex;gap:6px;align-items:center;flex:none} .actions button{padding:6px 10px}
 .live{font-size:11px;color:var(--muted);white-space:nowrap} .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;animation:p 2s infinite}
 @keyframes p{50%{opacity:.35}}
-main{display:grid;grid-template-columns:270px minmax(0,1fr) 340px;grid-template-rows:minmax(0,1fr) clamp(170px,32vh,320px);gap:1px;background:var(--line);min-height:0}
+main{--lw:270px;--rw:340px;--bh:32vh;display:grid;grid-template-columns:var(--lw) 5px minmax(0,1fr) 5px var(--rw);grid-template-rows:minmax(120px,1fr) 5px var(--bh);background:var(--line);min-height:0}
+main>section:nth-of-type(1){grid-area:1/1} main>section:nth-of-type(2){grid-area:1/3} main>section:nth-of-type(3){grid-area:1/5}
+.gut{background:var(--bg);position:relative;z-index:5;transition:background .15s}
+.gut:hover,.gut.drag{background:var(--blue)}
+.gut.gv{cursor:col-resize} .gut.gh{cursor:row-resize;grid-area:2/1/3/6}
+#g1{grid-area:1/2} #g2{grid-area:1/4}
+.gut.gh::after{content:"";position:absolute;left:50%;top:1px;width:40px;height:3px;margin-left:-20px;border-radius:2px;background:#3a4552}
+body.dragging{user-select:none} body.dragging iframe,body.dragging canvas{pointer-events:none}
+.sizebtns{margin-left:auto;display:flex;gap:2px;padding:0 6px;align-items:center} .sizebtns button{padding:2px 7px;font-size:12px;border:0;background:none;color:var(--muted)} .sizebtns button:hover{color:var(--fg)}
 section{background:var(--panel);min-height:0;min-width:0;display:flex;flex-direction:column}
 .tabs{display:flex;border-bottom:1px solid var(--line);flex:none;overflow-x:auto}
 .tabs button{border:0;border-radius:0;background:none;color:var(--muted);padding:9px 12px;border-bottom:2px solid transparent;white-space:nowrap}
@@ -81,7 +89,7 @@ section{background:var(--panel);min-height:0;min-width:0;display:flex;flex-direc
 .note{font-size:12px;color:var(--muted);background:#10151b;border:1px solid var(--line);border-radius:6px;padding:9px 11px;margin-top:10px}
 .gauge{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--red),#3a4552 50%,var(--green));position:relative;margin:6px 0 2px}
 .gauge b{position:absolute;top:-4px;width:3px;height:16px;background:#fff;border-radius:2px}
-.bottom{grid-column:1/4}
+.bottom{grid-area:3/1/4/6}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{position:sticky;top:0;background:#0f1318;color:var(--muted);font-weight:500;text-align:right;padding:7px 9px;z-index:1;white-space:nowrap}
 td{padding:6px 9px;border-bottom:1px solid #1a2028;text-align:right;white-space:nowrap}
@@ -104,7 +112,7 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
 #toasts{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;z-index:60;max-width:420px}
 .toast{background:#1a2230;border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:6px;padding:9px 12px;font-size:12px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
 .toast.ok{border-left-color:var(--green)} .toast.err{border-left-color:var(--red)} .toast.warn{border-left-color:var(--amber)}
-@media (max-width:1250px){main{grid-template-columns:230px minmax(0,1fr) 300px}}
+
 </style>
 </head>
 <body>
@@ -137,6 +145,7 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
     <div class="scroll" id="left"></div>
   </section>
 
+  <div class="gut gv" id="g1" title="Arrastra para cambiar el ancho (doble clic: tamaño original)"></div>
   <section>
     <div class="chart-head">
       <input id="search" list="symlist" placeholder="Buscar: BTC, AAPL…" autocomplete="off"><datalist id="symlist"></datalist>
@@ -152,11 +161,13 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
     <div id="chart"><div class="legend" id="legend"></div></div>
   </section>
 
+  <div class="gut gv" id="g2" title="Arrastra para cambiar el ancho (doble clic: tamaño original)"></div>
   <section>
     <div class="tabs" id="rt"><button data-t="trade" class="on">Operar</button><button data-t="why">Modelo: por qué</button></div>
     <div class="scroll pad" id="right"></div>
   </section>
 
+  <div class="gut gh" id="g3" title="Arrastra hacia arriba para ver más (doble clic: tamaño original)"></div>
   <section class="bottom">
     <div class="tabs" id="bt">
       <button data-t="mpos" class="on">Mis posiciones</button>
@@ -169,6 +180,7 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
       <button data-t="imp">Qué mira el modelo</button>
       <button data-t="ev">Avisos</button>
       <button data-t="con">Consola</button>
+      <div class="sizebtns"><button id="bh-min" title="Minimizar panel">▁</button><button id="bh-mid" title="Tamaño normal">▭</button><button id="bh-max" title="Maximizar panel">▣</button></div>
     </div>
     <div class="scroll" id="bottom"></div>
   </section>
@@ -706,6 +718,39 @@ $("#btn-fit").onclick = () => resetView(candleData.length);
 $("#search").onchange = () => { const v = $("#search").value.trim().toUpperCase(); if (!v) return; const m = MK.find(x => base(x.symbol) === v) || MK.find(x => base(x.symbol).startsWith(v)); if (m) select(m.symbol); else toast("No encontrado: " + v, "warn"); };
 $("#btn-run").onclick = () => job("run");
 $("#btn-train").onclick = () => { if (confirm("¿Reentrenar el modelo con el historial largo? Tarda unos minutos.")) job("train"); };
+
+/* ---------------- paneles redimensionables (se recuerdan en este navegador) ---------------- */
+const LAYOUT_DEF = {lw: 270, rw: 340, bh: Math.round(window.innerHeight * 0.32)};
+let LAY = {...LAYOUT_DEF};
+try { LAY = {...LAY, ...JSON.parse(localStorage.getItem("cerebro_layout") || "{}")}; } catch (e) {}
+function applyLayout() {
+  const m = $("main"), W = window.innerWidth, Hh = m.clientHeight || window.innerHeight - 60;
+  LAY.lw = Math.max(170, Math.min(LAY.lw, W * 0.4)); LAY.rw = Math.max(240, Math.min(LAY.rw, W * 0.45));
+  LAY.bh = Math.max(36, Math.min(LAY.bh, Hh - 130));
+  m.style.setProperty("--lw", LAY.lw + "px"); m.style.setProperty("--rw", LAY.rw + "px"); m.style.setProperty("--bh", LAY.bh + "px");
+  try { localStorage.setItem("cerebro_layout", JSON.stringify(LAY)); } catch (e) {}
+}
+function dragger(id, onMove) {
+  const g = $(id);
+  g.addEventListener("pointerdown", e => {
+    e.preventDefault(); g.setPointerCapture(e.pointerId); g.classList.add("drag"); document.body.classList.add("dragging");
+    const sx = e.clientX, sy = e.clientY, start = {...LAY};
+    const mv = ev => { onMove(ev.clientX - sx, ev.clientY - sy, start); applyLayout(); };
+    const up = () => { g.classList.remove("drag"); document.body.classList.remove("dragging"); g.removeEventListener("pointermove", mv); g.removeEventListener("pointerup", up); };
+    g.addEventListener("pointermove", mv); g.addEventListener("pointerup", up);
+  });
+}
+dragger("#g1", (dx, dy, s) => { LAY.lw = s.lw + dx; });
+dragger("#g2", (dx, dy, s) => { LAY.rw = s.rw - dx; });
+dragger("#g3", (dx, dy, s) => { LAY.bh = s.bh - dy; });
+$("#g1").ondblclick = () => { LAY.lw = LAYOUT_DEF.lw; applyLayout(); };
+$("#g2").ondblclick = () => { LAY.rw = LAYOUT_DEF.rw; applyLayout(); };
+$("#g3").ondblclick = () => { LAY.bh = LAYOUT_DEF.bh; applyLayout(); };
+$("#bh-min").onclick = () => { LAY.bh = 36; applyLayout(); };
+$("#bh-mid").onclick = () => { LAY.bh = LAYOUT_DEF.bh; applyLayout(); };
+$("#bh-max").onclick = () => { LAY.bh = 99999; applyLayout(); };
+window.addEventListener("resize", applyLayout);
+applyLayout();
 
 initChart();
 (async () => {
