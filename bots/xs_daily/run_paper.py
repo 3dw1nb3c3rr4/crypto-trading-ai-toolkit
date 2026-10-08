@@ -135,7 +135,15 @@ def main():
     print("MODO PAPER: no se envían órdenes reales.", "Estado en el selector:", "aprobada" if STRATEGY_NAME in sel.get("enabled", []) else "en observación")
     bundle = pickle.load(open(a.model, "rb"))
     ex = getattr(ccxt, a.exchange)({"enableRateLimit": True})
-    ex.load_markets()
+    for k in range(6):                                           # reintentos: fallos de DNS/red pasajeros no deben tumbar la ejecución diaria
+        try:
+            ex.load_markets()
+            break
+        except Exception as e:
+            if k == 5:
+                sys.exit(f"Sin conexión con {a.exchange} tras 6 intentos ({type(e).__name__}). Revisa internet/VPN/DNS y vuelve a ejecutar.")
+            print(f"  sin conexión ({type(e).__name__}), reintento {k + 1}/5 en {5 * (k + 1)} s ...", flush=True)
+            time.sleep(5 * (k + 1))
     bundle["symbols"] = [s for s in bundle["symbols"] if s in ex.markets]
     state = load_state(a.state, a.capital)
     today = time.strftime("%Y-%m-%d", time.gmtime())
