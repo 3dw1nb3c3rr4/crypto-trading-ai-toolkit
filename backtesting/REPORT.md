@@ -291,3 +291,16 @@ Conclusión: el funding **no mejora de forma significativa** al modelo, y E mism
 - Es consistente con el hallazgo de la sección 14 (≈ +0.3 % por cohorte, ventaja pequeña y marginal). El extremo inferior del IC apenas supera cero y el periodo coincide con el mejor año del modelo (2025), así que NO se considera confirmado: falta validación en vivo.
 
 Paper trading en vivo (`run_paper.py --force`, `resumen_paper.py`): su único propósito es acumular evidencia real sin riesgo; con cohortes diarias solapadas hacen falta ~7 meses (30 cohortes independientes) para concluir algo.
+
+## 16. Open interest real de Binance (127 símbolos, OI desde 2021-12) en el modelo diario
+
+Misma prueba que la sección 14 (105 símbolos en el panel, 1725 cohortes de 7 d desde 2022-01, K = 12 %, costo 0.14 %), con funding + OI de los archivos públicos de Binance (OI con 1 día de retraso).
+
+| variante | neto/cohorte | IC95 % | Sharpe | maxDD | pareado vs E | IC95 % pareado |
+|---|---|---|---|---|---|---|
+| E (sin derivados) | +0.292 % | [-0.234 %, +0.809 %] | 0.34 | -38 % | | |
+| F (+ funding) | +0.337 % | [-0.226 %, +0.867 %] | 0.38 | -43 % | +0.045 % | [-0.134 %, +0.213 %] |
+| O (+ OI) | +0.405 % | [-0.155 %, +0.936 %] | 0.46 | -45 % | +0.114 % | [-0.056 %, +0.281 %] |
+| FO (+ ambos) | +0.446 % | [-0.126 %, +0.992 %] | 0.50 | -44 % | +0.155 % | [-0.039 %, +0.339 %] |
+
+Lectura: el OI (y más aún funding + OI) empuja en la dirección correcta y de forma bastante consistente (FO mejora 2023 de -0.39 % a -0.07 % y 2026 de +0.11 % a +0.60 %), pero **ninguna mejora es estadísticamente significativa** y ninguna variante tiene IC95 % por encima de cero. Además se probaron 3 variantes, lo que debilita aún más la evidencia (Sharpe deflactado con N=700: 0.43). Conclusión: candidato a seguir midiendo, no aprobado.
