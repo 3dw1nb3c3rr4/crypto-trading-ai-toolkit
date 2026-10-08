@@ -12,6 +12,7 @@ os.environ["CEREBRO_HOME"] = tempfile.mkdtemp()             # nunca toca tu ~/.c
 import config_local as cl  # noqa: E402
 import cuenta_paper as cp  # noqa: E402
 import cuenta_real as cr  # noqa: E402
+import datos_cuenta as dc  # noqa: E402
 import funding_util as fu  # noqa: E402
 import universo as un  # noqa: E402
 
@@ -169,6 +170,44 @@ def t_misc():
         check("valida comisiones absurdas", True)
 
 
+class FakeAuthEx(FakeEx):
+    def fetch_leverage_tiers(self, symbols=None):
+        return {"BTC/USDT:USDT": [dict(minNotional=0, maxNotional=50000, maxLeverage=125, maintenanceMarginRate=0.004, info={"cum": "0"}),
+                                  dict(minNotional=50000, maxNotional=250000, maxLeverage=100, maintenanceMarginRate=0.005, info={"cum": "50"})]}
+
+    def fetch_trading_fee(self, s):
+        return dict(maker=0.00018, taker=0.00045)
+
+    def fetch_position_mode(self, s):
+        return dict(hedged=True)
+
+
+def t_datos():
+    check("liquidación fórmula Binance (ejemplo 10x)", close(dc.liq_price("LONG", 10000, 1, 1000, 0.004, 0), 9000 / 0.996))
+    cl.save_keys("binanceusdm", "real", "abcdefghijkl", "s3cr3t")
+    cfg = dict(CFG, exchange="binanceusdm")
+    d = dc.AccountData(cfg, make_exchange=lambda m, k: FakeAuthEx())
+    st = d.refresh()
+    check("lee comisiones y escalones de la cuenta", st["taker"] == 0.00045 and st["n_tiers"] == 1 and st["hedged"] is True and st["source"] == "real")
+    check("escalón según tamaño", d.bracket("BTC/USDT:USDT", 60000)[:3] == (100, 0.005, 50.0))
+    a = cp.PaperAccount(os.path.join(tempfile.mkdtemp(), "c.json"), dict(cfg, max_leverage=125), d)
+    a.place("BTC/USDT:USDT", "LONG", "market", 1000, 10, q(100.0))
+    p = a.s["positions"]["BTC/USDT:USDT"]
+    check("paper usa la comisión real", close(a.s["fees"], 1000 * 0.00045))
+    check("paper usa la liquidación del escalón", close(p["liq"], dc.liq_price("LONG", 100.0, 10, 100, 0.004, 0)))
+    try:
+        a.place("BTC/USDT:USDT", "LONG", "market", 60000, 110, q(100.0))
+        check("respeta el apalancamiento máximo del escalón", False)
+    except ValueError:
+        check("respeta el apalancamiento máximo del escalón", True)
+    ex = FakeAuthEx()
+    acc = cr.ExchangeAccount(dict(cfg, mode="demo", max_position_usdt=100, max_leverage=10), ex)
+    acc.place("BTC/USDT:USDT", "SHORT", "market", 50, 3, q(20000.0), sl=21000)
+    o = [c for c in ex.calls if c[0] == "order"]
+    check("modo hedge: positionSide en entrada y SL, sin reduceOnly", o[0][5] == {"positionSide": "SHORT"} and o[1][5].get("positionSide") == "SHORT" and "reduceOnly" not in o[1][5])
+    cl.delete_keys("binanceusdm", "real")
+
+
 if __name__ == "__main__":
-    t_paper(); t_real(); t_misc()
+    t_paper(); t_real(); t_misc(); t_datos()
     print(f"test_cuentas: {len(OK)} comprobaciones OK")

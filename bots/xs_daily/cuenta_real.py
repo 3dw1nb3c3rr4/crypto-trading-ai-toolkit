@@ -35,10 +35,24 @@ def make_exchange(cfg, keys=None, authenticated=True):
 
 
 class ExchangeAccount:
-    def __init__(self, cfg, ex=None):
+    def __init__(self, cfg, ex=None, hedged=None):
         self.cfg = cfg
         self.ex = ex or make_exchange(cfg)
         self._markets = False
+        self._hedged = hedged                                # modo de posición de tu cuenta (None = consultarlo)
+
+    def hedged(self):
+        """True si la cuenta está en modo hedge (posiciones LONG y SHORT separadas): las órdenes llevan positionSide."""
+        if self._hedged is None:
+            try:
+                self._hedged = bool(self.ex.fetch_position_mode("BTC/USDT:USDT").get("hedged"))
+            except Exception:
+                self._hedged = False
+        return self._hedged
+
+    def _close_params(self, side):
+        """Parámetros para cerrar/reducir una posición `side` (LONG/SHORT) según el modo de la cuenta."""
+        return {"positionSide": side} if self.hedged() else {"reduceOnly": True}
 
     def markets(self):
         if not self._markets:
@@ -111,13 +125,14 @@ class ExchangeAccount:
         ref = price if otype == "limit" else quote["price"]
         amt = self.amount_for(symbol, usdt, ref)
         bs = "buy" if side == "LONG" else "sell"
-        o = self.ex.create_order(symbol, "limit" if otype == "limit" else "market", bs, amt, price if otype == "limit" else None)
+        params = {"positionSide": side} if self.hedged() else {}
+        o = self.ex.create_order(symbol, "limit" if otype == "limit" else "market", bs, amt, price if otype == "limit" else None, params)
         extra = []
         opp = "sell" if bs == "buy" else "buy"
         for kind, val in (("stopLossPrice", sl), ("takeProfitPrice", tp)):
             if val:
                 try:
-                    self.ex.create_order(symbol, "market", opp, amt, None, {kind: float(val), "reduceOnly": True})
+                    self.ex.create_order(symbol, "market", opp, amt, None, {kind: float(val), **self._close_params(side)})
                     extra.append("SL" if kind.startswith("stop") else "TP")
                 except Exception as e:                       # la entrada ya está hecha: avisar sin ocultarlo
                     extra.append(f"{'SL' if kind.startswith('stop') else 'TP'} FALLÓ ({type(e).__name__}: {str(e)[:80]})")
@@ -129,7 +144,7 @@ class ExchangeAccount:
             if c:
                 amt = float(self.ex.amount_to_precision(symbol, c * min(max(float(fraction), 0.0), 1.0)))
                 bs = "sell" if p.get("side") == "long" else "buy"
-                o = self.ex.create_order(symbol, "market", bs, amt, None, {"reduceOnly": True})
+                o = self.ex.create_order(symbol, "market", bs, amt, None, self._close_params("LONG" if p.get("side") == "long" else "SHORT"))
                 return f"cierre enviado ({o.get('id')}): {amt} {symbol.split('/')[0]}"
         raise ValueError("no hay posición abierta en ese símbolo")
 

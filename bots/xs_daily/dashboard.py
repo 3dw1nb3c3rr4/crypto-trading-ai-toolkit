@@ -37,6 +37,7 @@ sys.path.insert(0, HERE)
 import config_local as cl  # noqa: E402
 import cuenta_paper as cp  # noqa: E402
 import cuenta_real as cr  # noqa: E402
+import datos_cuenta as dc  # noqa: E402
 import derivs_live  # noqa: E402
 import funding_util  # noqa: E402
 import universo  # noqa: E402
@@ -306,7 +307,10 @@ class Hub:
         self.job = dict(running=False, name="", lines=[], code=None)
         self.lock = threading.Lock()
         self.events = []                                     # avisos para el navegador (llenados, TP/SL, liquidaciones, funding)
-        self.paper = cp.PaperAccount(MANUAL, cfg)
+        self.acct = dc.AccountData(cfg)                       # comisiones / escalones / modo de posición de TU cuenta
+        self.paper = cp.PaperAccount(MANUAL, cfg, self.acct)
+        if not demo and self.acct.stale():
+            threading.Thread(target=self._refresh_acct_bg, daemon=True).start()
         self.exacc = None
         self.last_funding_check = 0.0
         threading.Thread(target=self._engine, daemon=True).start()
@@ -330,7 +334,7 @@ class Hub:
         if self.cfg["mode"] == "paper":
             return self.paper
         if self.exacc is None:
-            self.exacc = cr.ExchangeAccount(self.cfg)
+            self.exacc = cr.ExchangeAccount(self.cfg, hedged=self.acct.d.get("hedged"))
         return self.exacc
 
     def markets(self):
@@ -341,9 +345,13 @@ class Hub:
         cfg = cl.save_config({**old, **new})
         self.cfg = cfg
         self.paper.cfg = cfg
+        self.acct.cfg = cfg
         if cfg["exchange"] != old["exchange"] and not self.demo:
             self.src = LiveSource(cfg["exchange"])
             self.cache.clear()
+            self.acct = dc.AccountData(cfg)
+            self.paper.data = self.acct
+            threading.Thread(target=self._refresh_acct_bg, daemon=True).start()
         if cfg["exchange"] != old["exchange"] or cfg["mode"] != old["mode"]:
             self.exacc = None
         if cfg["bot_variant"] != old["bot_variant"]:
@@ -440,13 +448,35 @@ class Hub:
         ttl = 15 if tf in ("1m", "5m", "15m", "1h") else 60
         return self.cached(("c", sym, tf), ttl, lambda: self.src.candles(sym, tf if not self.demo else "1d"))
 
+    def _refresh_acct(self):
+        try:
+            st = self.acct.refresh(self.symbols_of_interest()[:30])
+            self.note(f"datos de tu cuenta ({st['source']}): comisión taker {st['taker']:.4%} · escalones de {st['n_tiers']} símbolos"
+                      if st["taker"] is not None else f"datos de tu cuenta ({st['source']}): escalones de {st['n_tiers']} símbolos", "ok")
+            return st
+        except Exception as e:                               # noqa: BLE001
+            if cl.load_keys(self.cfg["exchange"], "real") or cl.load_keys(self.cfg["exchange"], "demo"):
+                self.note(f"no se pudieron leer los datos de tu cuenta: {str(e)[:160]}", "warn")
+            raise
+
+    def _refresh_acct_bg(self):
+        try:
+            self._refresh_acct()
+        except Exception:
+            pass                                             # ya quedó el aviso; se usan los valores de la configuración
+
     def symbol_info(self, sym):
         m = self.markets().get(sym, {})
+        if self.acct.d and sym not in self.acct.d.get("fees", {}):
+            threading.Thread(target=self.acct.fetch_fee, args=(sym,), daemon=True).start()
+        maker, taker, fsrc = self.acct.fee_for(sym)
         t = self.src.tickers([sym]).get(sym, {})
         f = self.cached(("f", sym), 60, lambda: self.src.funding_rate(sym))
         lev = ((m.get("limits") or {}).get("leverage") or {}).get("max")
         lim = m.get("limits") or {}
-        return dict(symbol=sym, cls=universo.classify(sym, m), ticker=t, funding=f, max_leverage=lev,
+        tiers = self.acct.tiers_for(sym)
+        return dict(symbol=sym, cls=universo.classify(sym, m), ticker=t, funding=f, max_leverage=(tiers[0][2] if tiers else lev),
+                    fee=dict(maker=maker, taker=taker, source=fsrc), tiers=tiers, tiers_source="tu cuenta" if tiers else None,
                     min_cost=(lim.get("cost") or {}).get("min"), contract_size=m.get("contractSize"))
 
     def market_list(self):
@@ -520,7 +550,7 @@ class Hub:
     def bot_args(self):
         c = self.cfg
         return [os.path.join(HERE, "run_paper.py"), "--force", "--capital", str(c["bot_capital"]), "--exchange", c["exchange"],
-                "--universe", c["universe"], "--fee", str(c["taker"]), "--slip", str(c["slippage"]), "--state", STATE, "--log", LOG,
+                "--universe", c["universe"], "--fee", str(self.acct.fee_for("BTC/USDT:USDT")[1]), "--slip", str(c["slippage"]), "--state", STATE, "--log", LOG,
                 "--variant", c["bot_variant"], "--model", MODEL]
 
     # ---------------------------------------------------------------- reinicio con copia de seguridad
@@ -587,6 +617,8 @@ def make_handler(hub: Hub):
                     return self._send(200, hub.candles(q["symbol"], q.get("tf", "1h")))
                 if u.path == "/api/symbol":
                     return self._send(200, hub.symbol_info(q["symbol"]))
+                if u.path == "/api/account_data":
+                    return self._send(200, hub.acct.status())
                 if u.path == "/api/markets":
                     return self._send(200, hub.market_list())
                 if u.path == "/api/config":
@@ -638,7 +670,9 @@ def make_handler(hub: Hub):
                 if u.path == "/api/keys":
                     where = cl.save_keys(hub.cfg["exchange"], b.get("mode", hub.cfg["mode"]), b.get("apiKey", ""), b.get("secret", ""), b.get("password", ""))
                     hub.exacc = None
-                    return self._send(200, {"ok": True, "msg": f"claves guardadas en tu PC ({where})"})
+                    if not hub.demo:
+                        threading.Thread(target=hub._refresh_acct_bg, daemon=True).start()
+                    return self._send(200, {"ok": True, "msg": f"claves guardadas en tu PC ({where}); leyendo datos de tu cuenta…"})
                 if u.path == "/api/keys/delete":
                     cl.delete_keys(hub.cfg["exchange"], b.get("mode", hub.cfg["mode"]))
                     hub.exacc = None
@@ -665,6 +699,9 @@ def make_handler(hub: Hub):
                                "3) si la limitaste por IP, que incluya la IP pública de tu PC, "
                                "4) para DEMO, que las creaste en demo.binance.com (Futuros demo), no en la cuenta normal.")
                     return self._send(200, {"ok": ok, "msg": msg, "results": res})
+                if u.path == "/api/account_data/refresh":
+                    st = hub._refresh_acct()
+                    return self._send(200, {"ok": True, "msg": "datos de tu cuenta actualizados", "status": st})
                 if u.path == "/api/train_info":
                     import update_data
                     info = dict(variant=hub.cfg["bot_variant"], model_until=None)

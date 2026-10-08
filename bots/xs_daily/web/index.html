@@ -217,6 +217,9 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
     <div><label>Passphrase (solo OKX)</label><input id="k-pass" type="password" autocomplete="off"></div>
     <div style="display:flex;gap:6px;align-items:flex-end"><button id="k-save">Guardar claves</button><button id="k-test">Probar conexión</button><button id="k-del" class="danger">Borrar</button></div>
   </div>
+  <div class="h">Datos de tu cuenta (se leen con tus claves)</div>
+  <div id="acct-status" class="muted">–</div>
+  <div style="margin-top:8px"><button id="acct-refresh">Actualizar datos de la cuenta</button></div>
   <div class="note">Crea las claves <b>sin permiso de retiro</b> y, si el exchange lo permite, limitadas a la IP de tu PC. El secreto nunca vuelve al navegador. Con <span class="num">pip install keyring</span> se guardan cifradas en el Administrador de credenciales de Windows.</div>
   <div class="foot"><button id="cfg-cancel">Cerrar</button><button class="primary" id="cfg-save">Guardar configuración</button></div>
 </div></div>
@@ -413,17 +416,30 @@ function renderLeft() {
 /* ---------------- derecha: operar / por qué ---------------- */
 const inForm = () => document.activeElement && document.activeElement.closest && document.activeElement.closest("#right") && ["INPUT", "SELECT"].includes(document.activeElement.tagName);
 function renderRight() { if (rightTab === "trade") renderTrade(); else renderWhy(); }
-function maxLev() { const m = INFO && INFO.symbol === sel && INFO.max_leverage ? INFO.max_leverage : 125; return Math.max(1, Math.min(CFG ? CFG.max_leverage : 10, m)); }
+function bracket(notional) {                          // escalón real de tu cuenta: [mín, máx, apal. máx, mmr, cum]
+  const T = INFO && INFO.symbol === sel ? INFO.tiers : null;
+  if (!T || !T.length) return null;
+  return T.find(t => notional >= t[0] && notional < t[1]) || T[T.length - 1];
+}
+function maxLev() {
+  const b = bracket(+F.usdt || 0);
+  const m = b ? b[2] : (INFO && INFO.symbol === sel && INFO.max_leverage ? INFO.max_leverage : 125);
+  return Math.max(1, Math.min(CFG ? CFG.max_leverage : 10, m));
+}
 function calc() {
   const q = PX[sel] || {}, cfg = CFG || {taker: .0005, maker: .0002, slippage: .0002, mmr: .005};
   const px = F.type === "limit" && +F.price ? +F.price : (F.side === "LONG" ? (q.ask || q.price) * (1 + cfg.slippage) : (q.bid || q.price) * (1 - cfg.slippage));
   const usdtv = +F.usdt || 0, lev = +F.lev || 1, qty = px ? usdtv / px : 0;
-  const feeIn = usdtv * (F.type === "limit" ? cfg.maker : cfg.taker), feeOut = usdtv * cfg.taker;
-  const liq = px ? (F.side === "LONG" ? px * (1 - 1 / lev + cfg.mmr) : px * (1 + 1 / lev - cfg.mmr)) : null;
+  const fee = INFO && INFO.symbol === sel && INFO.fee ? INFO.fee : {maker: cfg.maker, taker: cfg.taker, source: "configuración"};
+  const feeIn = usdtv * (F.type === "limit" ? fee.maker : fee.taker), feeOut = usdtv * fee.taker;
+  const b = bracket(usdtv);
+  let liq = null;
+  if (px && b && qty) { const s = F.side === "LONG" ? 1 : -1, den = qty * b[3] - s * qty; liq = den ? Math.max(0, (usdtv / lev + b[4] - s * qty * px) / den) : null; }
+  else if (px) liq = F.side === "LONG" ? px * (1 - 1 / lev + cfg.mmr) : px * (1 + 1 / lev - cfg.mmr);
   const fr = INFO && INFO.symbol === sel && INFO.funding ? INFO.funding.rate : null;
   const fund8 = fr != null ? (F.side === "LONG" ? 1 : -1) * usdtv * fr : null;
   const be = px && usdtv ? (F.side === "LONG" ? px * (1 + (feeIn + feeOut) / usdtv) : px * (1 - (feeIn + feeOut) / usdtv)) : null;
-  return {px, qty, margin: usdtv / lev, feeIn, feeOut, liq, fund8, be, avail: ACC ? ACC.available : null};
+  return {px, qty, margin: usdtv / lev, feeIn, feeOut, liq, fund8, be, avail: ACC ? ACC.available : null, fee, tierSrc: b ? "escalón de tu cuenta" : "aproximada"};
 }
 function renderTrade() {
   const el = $("#right");
@@ -447,9 +463,9 @@ function renderTrade() {
       <tr><td class="muted">Precio estimado</td><td class="num">${fmtPx(c.px)}</td></tr>
       <tr><td class="muted">Cantidad</td><td class="num">${c.qty ? c.qty.toPrecision(5) : "–"} ${base(sel)}</td></tr>
       <tr><td class="muted">Margen requerido</td><td class="num">${money(c.margin)} USDT</td></tr>
-      <tr><td class="muted">Comisión entrada + salida</td><td class="num">${money(c.feeIn)} + ${money(c.feeOut)}</td></tr>
+      <tr><td class="muted">Comisión entrada + salida <span class="dim">(${(c.fee.taker * 100).toFixed(3)}% · ${c.fee.source})</span></td><td class="num">${money(c.feeIn)} + ${money(c.feeOut)}</td></tr>
       <tr><td class="muted">Equilibrio (cubre comisiones)</td><td class="num">${fmtPx(c.be)}</td></tr>
-      <tr><td class="muted">Liquidación aprox.</td><td class="num" style="color:var(--amber)">${fmtPx(c.liq)}</td></tr>
+      <tr><td class="muted">Liquidación <span class="dim">(${c.tierSrc})</span></td><td class="num" style="color:var(--amber)">${fmtPx(c.liq)}</td></tr>
       <tr><td class="muted">Funding por periodo (estimado)</td><td class="num ${c.fund8 == null ? "" : c.fund8 > 0 ? "neg" : "pos"}">${c.fund8 == null ? "–" : (c.fund8 > 0 ? "pagas " : "cobras ") + Math.abs(c.fund8).toFixed(4)}</td></tr>
       <tr><td class="muted">Disponible</td><td class="num">${money(c.avail)} USDT</td></tr>
     </table>
@@ -466,6 +482,7 @@ function renderTrade() {
   bind("#f-price", "price"); bind("#f-usdt", "usdt"); bind("#f-tp", "tp"); bind("#f-sl", "sl");
   $("#f-lev").oninput = e => { F.lev = +e.target.value; $("#f-levv").textContent = F.lev + "x"; };
   $("#f-lev").onchange = () => rer();
+  $("#f-usdt").oninput = e => { F.usdt = e.target.value; };
   el.querySelectorAll(".pcts button").forEach(b => b.onclick = () => { const a = ACC && ACC.available ? ACC.available : 0; F.usdt = Math.floor(a * F.lev * (+b.dataset.p) / 100 * 0.98 * 100) / 100; rer(); });
   el.querySelectorAll("button.qc").forEach(b => b.onclick = () => closePos(sel, +b.dataset.f));
   $("#f-go").onclick = () => submitOrder();
@@ -695,6 +712,7 @@ async function openCfg() {
   const ks = () => { const s = $("#k-mode").value === "real" ? r.keys_real : r.keys_demo; $("#k-status").innerHTML = s.saved ? `<span class="pos">guardadas</span> (${s.hint}) · ${s.backend}` : '<span class="muted">sin claves</span>'; };
   ks(); $("#k-mode").onchange = ks;
   $("#c-confirm").value = ""; $("#realconfirm").style.display = "none";
+  showAcct();
   $("#c-mode").onchange = () => { $("#realconfirm").style.display = $("#c-mode").value === "real" && r.cfg.mode !== "real" ? "block" : "none"; };
   $("#m-cfg").classList.add("on");
 }
@@ -713,6 +731,17 @@ $("#k-test").onclick = async () => {
     (r.results || []).map(x => `<div style="font-size:11px">${x.ok ? "✔" : "✖"} <b>${x.label}</b>: <span class="muted">${x.msg}</span></div>`).join("");
 };
 $("#k-del").onclick = async () => { if (!confirm("¿Borrar las claves guardadas?")) return; const r = await post("/api/keys/delete", {mode: $("#k-mode").value}); toast(r.ok ? r.msg : r.error, r.ok ? "ok" : "err"); openCfg(); };
+async function showAcct() {
+  const a = await api("/api/account_data");
+  $("#acct-status").innerHTML = a.available
+    ? `Fuente: claves <b>${(a.source || "").toUpperCase()}</b> · actualizado ${new Date(a.updated * 1000).toLocaleString("es")}<br>
+       Comisión taker <b class="num">${a.taker != null ? (a.taker * 100).toFixed(4) + "%" : "–"}</b> · maker <b class="num">${a.maker != null ? (a.maker * 100).toFixed(4) + "%" : "–"}</b> ·
+       escalones de apalancamiento de <b class="num">${a.n_tiers}</b> símbolos · modo de posición <b>${a.hedged == null ? "–" : a.hedged ? "hedge" : "one-way"}</b>
+       ${a.errors && a.errors.length ? `<div class="neg" style="font-size:11px">${a.errors.join("<br>")}</div>` : ""}
+       <div style="font-size:11px">Se usan en la cuenta paper (comisión y liquidación reales), en el formulario y en el bot.</div>`
+    : "Sin datos de tu cuenta: guarda tus claves (REAL da tus comisiones verdaderas; DEMO sirve para escalones). Mientras tanto se usan los valores de arriba.";
+}
+$("#acct-refresh").onclick = async () => { $("#acct-status").innerHTML = '<span class="spin"></span>leyendo tu cuenta…'; const r = await post("/api/account_data/refresh"); toast(r.ok ? r.msg : r.error, r.ok ? "ok" : "err"); showAcct(); };
 $("#cfg-cancel").onclick = () => $("#m-cfg").classList.remove("on");
 $("#btn-cfg").onclick = openCfg;
 $("#btn-reset").onclick = () => { $("#r-cap").value = CFG ? CFG.manual_capital : 1000; $("#m-reset").classList.add("on"); };

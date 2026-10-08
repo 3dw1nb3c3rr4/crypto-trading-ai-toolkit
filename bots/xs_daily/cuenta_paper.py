@@ -20,8 +20,9 @@ def now_ms():
 
 
 class PaperAccount:
-    def __init__(self, path, cfg):
+    def __init__(self, path, cfg, data=None):
         self.path, self.cfg = path, cfg
+        self.data = data                                    # datos_cuenta.AccountData: comisiones y escalones reales de tu cuenta
         self.s = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else self._fresh(cfg["manual_capital"])
 
     @staticmethod
@@ -39,9 +40,30 @@ class PaperAccount:
         self.save()
 
     # ------------------------------------------------------------------ cálculos
-    def liq_price(self, side, entry, lev):
+    def liq_price(self, side, entry, lev, symbol=None, qty=None, margin=None):
+        """Con escalones de tu cuenta: fórmula de Binance (mmr y cum del escalón). Sin ellos: aproximación con mmr fijo."""
+        if self.data and symbol and qty and margin is not None:
+            import datos_cuenta as dc
+            _, mmr, cum, src = self.data.bracket(symbol, qty * entry)
+            if src != "configuración":
+                return dc.liq_price(side, entry, qty, margin, mmr, cum)
         m = self.cfg["mmr"]
         return entry * (1 - 1 / lev + m) if side == "LONG" else entry * (1 + 1 / lev - m)
+
+    def fees(self, symbol):
+        """(maker, taker): los de tu cuenta si hay datos, si no los de la configuración."""
+        if self.data:
+            mk, tk, _ = self.data.fee_for(symbol)
+            return mk, tk
+        return self.cfg["maker"], self.cfg["taker"]
+
+    def max_lev(self, symbol, notional):
+        lev = self.cfg["max_leverage"]
+        if self.data:
+            bl, _, _, src = self.data.bracket(symbol, notional)
+            if bl and src != "configuración":
+                lev = min(lev, int(bl))
+        return lev
 
     def used_margin(self):
         return sum(p["margin"] for p in self.s["positions"].values()) + sum(o["margin"] for o in self.s["orders"])
@@ -66,13 +88,16 @@ class PaperAccount:
         lev = int(lev)
         if usdt <= 0:
             raise ValueError("el valor de la posición debe ser > 0")
-        if not 1 <= lev <= self.cfg["max_leverage"]:
-            raise ValueError(f"apalancamiento entre 1 y {self.cfg['max_leverage']} (cámbialo en Configuración)")
+        ml = self.max_lev(symbol, usdt)
+        if not 1 <= lev <= ml:
+            raise ValueError(f"apalancamiento entre 1 y {ml}x para {usdt:.0f} USDT en {symbol.split('/')[0]} "
+                             f"(tope de tu configuración o escalón del exchange)")
+        maker, taker = self.fees(symbol)
         if otype == "limit":
             if not price or price <= 0:
                 raise ValueError("falta el precio límite")
             margin = usdt / lev
-            fee = usdt * self.cfg["maker"]
+            fee = usdt * maker
             if margin + fee > self.s["balance"]:
                 raise ValueError(f"saldo insuficiente: necesitas {margin + fee:.2f} USDT de margen+comisión")
             self.s["balance"] -= margin                     # el margen queda reservado mientras la orden está abierta
@@ -82,7 +107,7 @@ class PaperAccount:
             self.save()
             return f"orden límite {side} {symbol.split('/')[0]} a {price} creada"
         px = quote["ask"] * (1 + self.cfg["slippage"]) if side == "LONG" else quote["bid"] * (1 - self.cfg["slippage"])
-        msg = self._fill(symbol, side, usdt / px, px, lev, self.cfg["taker"], tp, sl)
+        msg = self._fill(symbol, side, usdt / px, px, lev, taker, tp, sl)
         self.save()
         return msg
 
@@ -118,7 +143,7 @@ class PaperAccount:
             p = dict(side=side, qty=qty, entry=px, margin=margin, lev=lev, fees=fee, funding=0.0, opened=now_ms(),
                      last_funding=now_ms(), tp=tp, sl=sl)
             self.s["positions"][symbol] = p
-        p["liq"] = self.liq_price(p["side"], p["entry"], max(p["lev"], 1))
+        p["liq"] = self.liq_price(p["side"], p["entry"], max(p["lev"], 1), symbol, p["qty"], p["margin"])
         return f"{side} {symbol.split('/')[0]}: {qty:.6g} a {px:.6g} (comisión {fee:.4f} USDT)"
 
     def _realize(self, symbol, qty, px, fee_rate, reason, liquidation=False):
@@ -149,7 +174,7 @@ class PaperAccount:
             raise ValueError("no hay posición abierta en ese símbolo")
         fraction = min(max(float(fraction), 0.0), 1.0)
         px = quote["bid"] * (1 - self.cfg["slippage"]) if p["side"] == "LONG" else quote["ask"] * (1 + self.cfg["slippage"])
-        self._realize(symbol, p["qty"] * fraction, px, self.cfg["taker"], reason)
+        self._realize(symbol, p["qty"] * fraction, px, self.fees(symbol)[1], reason)
         self.save()
         return f"{symbol.split('/')[0]} cerrada {fraction:.0%} a {px:.6g}"
 
@@ -183,7 +208,7 @@ class PaperAccount:
                 self.s["orders"].remove(o)
                 try:
                     ev.append("límite llenada: " + self._fill(o["symbol"], o["side"], o["usdt"] / o["price"], o["price"], o["lev"],
-                                                              self.cfg["maker"], o.get("tp"), o.get("sl"), reserved=o["margin"]))
+                                                              self.fees(o["symbol"])[0], o.get("tp"), o.get("sl"), reserved=o["margin"]))
                 except ValueError as e:
                     self.s["balance"] += o["margin"]
                     ev.append(f"límite cancelada: {e}")
