@@ -110,7 +110,8 @@ def step(state, ex, bundle, today, log=print, derivs=None):
                 continue
             positions.append({"symbol": s, "side": side, "entry": px, "notional": notional, "fee": notional * FEE})
             state["equity"] -= notional * FEE
-    state["cohorts"].append({"opened": today, "signal_date": str(date.date()), "capital": cap, "positions": positions})
+    state["cohorts"].append({"opened": today, "opened_ts": int(ex.milliseconds()), "signal_date": str(date.date()), "capital": cap,
+                             "positions": positions})   # opened_ts = momento real de la entrada (para marcarla en el gráfico)
     log(f"  cohorte abierta ({len(positions)} posiciones, {notional:.2f} c/u): LONG {', '.join(s.split('/')[0] for s in longs)} | "
         f"SHORT {', '.join(s.split('/')[0] for s in shorts)}")
     return realized

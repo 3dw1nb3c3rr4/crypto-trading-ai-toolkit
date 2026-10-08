@@ -316,7 +316,9 @@ function drawEntries() {
   if (!data.length) { candle.setMarkers([]); return; }
   const times = data.map(b => b.time), markers = [], agg = {};
   if (ST) for (const c of ST.bot.state.cohorts) for (const p of c.positions) if (p.symbol === sel) {
-    const t = Date.parse(c.opened + "T00:00:00Z") / 1000, bt = times.find(x => x >= t);
+    // vela que contiene el momento real de la entrada (cohortes viejas sin hora: inicio del día UTC)
+    const t = c.opened_ts ? c.opened_ts / 1000 : Date.parse(c.opened + "T00:00:00Z") / 1000;
+    let bt = null; for (const x of times) { if (x <= t) bt = x; else break; }
     const k = "bot " + p.side, a = (agg[k] = agg[k] || {n: 0, w: 0, v: 0, side: p.side}); a.n++; a.w += p.notional; a.v += p.notional * p.entry;
     if (bt) markers.push({time: bt, position: p.side === "LONG" ? "belowBar" : "aboveBar", color: p.side === "LONG" ? "#22c55e" : "#ef4444", shape: p.side === "LONG" ? "arrowUp" : "arrowDown"});
   }
