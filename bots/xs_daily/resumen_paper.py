@@ -9,7 +9,10 @@ import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-st = json.load(open(os.path.join(HERE, "paper_state.json")))
+sp = os.path.join(HERE, "paper_state.json")
+if not os.path.exists(sp):
+    raise SystemExit("Aún no hay paper trading: ejecuta primero  python bots/xs_daily/run_paper.py --force")
+st = json.load(open(sp))
 cl = pd.DataFrame(st["closed"])
 print(f"equity realizada {st['equity']:.2f} | cohortes abiertas {len(st['cohorts'])} | cerradas {len(cl)}")
 if len(cl):
