@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cerebro · Paper</title>
+<link rel="icon" href="data:,">
+<script src="/web/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{
+  --bg:#0b0e11; --panel:#12161c; --panel2:#171c23; --line:#232a33; --fg:#e7ecf2; --muted:#8a96a3; --dim:#5d6875;
+  --green:#22c55e; --red:#ef4444; --blue:#3b82f6; --amber:#f59e0b; --violet:#a78bfa;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.4 "Segoe UI",system-ui,-apple-system,sans-serif}
+body{display:grid;grid-template-rows:auto 1fr;min-height:0}
+::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-track{background:var(--panel)}
+::-webkit-scrollbar-thumb{background:#2c3540;border-radius:6px;border:2px solid var(--panel)} ::-webkit-scrollbar-thumb:hover{background:#3a4552}
+*{scrollbar-color:#2c3540 var(--panel);scrollbar-width:thin}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pos{color:var(--green)} .neg{color:var(--red)} .muted{color:var(--muted)} .dim{color:var(--dim)}
+button{font:inherit;color:var(--fg);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:#3a4552} button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.3px}
+.b-long{background:rgba(34,197,94,.15);color:var(--green)} .b-short{background:rgba(239,68,68,.15);color:var(--red)} .b-none{background:#1d232b;color:var(--muted)}
+/* cabecera */
+header{display:flex;align-items:center;gap:20px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brandbox{display:flex;flex-direction:column;gap:3px;flex:none}
+.brand{font-weight:700;font-size:15px;white-space:nowrap}
+.paper{background:var(--amber);color:#1a1200;font-weight:800;font-size:10px;padding:2px 6px;border-radius:3px;white-space:nowrap;margin-right:8px}
+.kpis{display:flex;gap:24px;flex:1;min-width:0;overflow:hidden}
+.kpi{flex:none}
+.kpi .l{font-size:11px;color:var(--muted);white-space:nowrap} .kpi .v{font-size:17px;font-weight:700;white-space:nowrap}
+.actions{display:flex;gap:6px;align-items:center;flex:none}
+.actions button{padding:6px 10px}
+.live{font-size:11px;color:var(--muted);white-space:nowrap} .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;animation:p 2s infinite}
+@keyframes p{50%{opacity:.3}}
+/* cuerpo */
+main{display:grid;grid-template-columns:290px minmax(0,1fr) 360px;grid-template-rows:minmax(0,1fr) clamp(170px,30vh,300px);gap:1px;background:var(--line);min-height:0}
+section{background:var(--panel);min-height:0;min-width:0;display:flex;flex-direction:column}
+.tabs{display:flex;border-bottom:1px solid var(--line);flex:none;overflow-x:auto}
+.tabs button{border:0;border-radius:0;background:none;color:var(--muted);padding:9px 13px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--blue)}
+.scroll{overflow:auto;min-height:0;flex:1}
+/* lista izquierda */
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:8px 12px;border-bottom:1px solid #1a2028;cursor:pointer}
+.row:hover{background:var(--panel2)} .row.sel{background:#1a2230;box-shadow:inset 3px 0 0 var(--blue)}
+.row .s{font-weight:600} .row .r{text-align:right}
+.row .sub{font-size:11px;color:var(--muted)}
+.scorebar{height:4px;background:#1d232b;border-radius:2px;margin-top:4px;grid-column:1/3}
+.scorebar i{display:block;height:100%;border-radius:2px}
+.group-h{padding:8px 12px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;background:#0f1318;position:sticky;top:0;z-index:1}
+/* gráfico */
+.chart-head{display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden}
+.chart-head .sym{font-size:16px;font-weight:700} .chart-head .px{font-size:16px}
+.tf{margin-left:auto;display:flex;gap:4px} .tf button{padding:4px 9px;font-size:12px} .tf button.on{background:#1f2a3a;border-color:var(--blue)}
+#chart{flex:1;min-height:0;position:relative}
+.legend{position:absolute;left:12px;top:8px;z-index:2;font-size:12px;color:var(--muted);pointer-events:none}
+/* panel derecho */
+.pad{padding:12px 14px}
+.h{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cell{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.cell .l{font-size:11px;color:var(--muted)} .cell .v{font-size:15px;font-weight:600}
+.drv{margin-bottom:9px} .drv .t{display:flex;justify-content:space-between;gap:8px;font-size:12px}
+.drv .d{font-size:11px;color:var(--muted)}
+.bar{position:relative;height:6px;background:#1d232b;border-radius:3px;margin-top:4px}
+.bar i{position:absolute;top:0;height:100%;border-radius:3px}
+.bar .mid{position:absolute;left:50%;top:-2px;width:1px;height:10px;background:#3a4552}
+.note{font-size:12px;color:var(--muted);background:#10151b;border:1px solid var(--line);border-radius:6px;padding:9px 11px;margin-top:10px}
+.gauge{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--red),#3a4552 50%,var(--green));position:relative;margin:6px 0 2px}
+.gauge b{position:absolute;top:-4px;width:3px;height:16px;background:#fff;border-radius:2px}
+/* inferior */
+.bottom{grid-column:1/4}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{position:sticky;top:0;background:#0f1318;color:var(--muted);font-weight:500;text-align:right;padding:7px 10px;z-index:1}
+td{padding:6px 10px;border-bottom:1px solid #1a2028;text-align:right}
+th:first-child,td:first-child,th.l,td.l{text-align:left}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--panel2)}
+#equity{height:100%;min-height:200px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;padding:12px}
+pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pre-wrap}
+.empty{padding:18px;color:var(--muted)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid #3a4552;border-top-color:var(--blue);border-radius:50%;animation:s 1s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes s{to{transform:rotate(360deg)}}
+@media (max-width:1250px){main{grid-template-columns:250px minmax(0,1fr) 300px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brandbox"><div class="brand">Cerebro · cross-sectional</div>
+    <div><span class="paper">PAPER · SIN ÓRDENES REALES</span><span class="live" id="live"><span class="dot"></span>conectando…</span></div></div>
+  <div class="kpis">
+    <div class="kpi"><div class="l">Equity total</div><div class="v num" id="k-total">–</div></div>
+    <div class="kpi"><div class="l">Realizado</div><div class="v num" id="k-real">–</div></div>
+    <div class="kpi"><div class="l">No realizado (vivo)</div><div class="v num" id="k-unreal">–</div></div>
+    <div class="kpi"><div class="l">Abiertas / cerradas</div><div class="v num" id="k-coh">–</div></div>
+    <div class="kpi"><div class="l">Media por cohorte</div><div class="v num" id="k-mean">–</div></div>
+  </div>
+  <div class="actions">
+    <button class="primary" id="btn-run">▶ Ejecutar hoy</button>
+    <button id="btn-train">⚙ Reentrenar</button>
+    <button id="btn-an" title="Recalcular el análisis del modelo">⟳ Análisis</button>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="tabs" id="lt">
+      <button data-t="pos" class="on">Posiciones</button>
+      <button data-t="rank">Ranking del modelo</button>
+    </div>
+    <div class="scroll" id="left"></div>
+  </section>
+
+  <section>
+    <div class="chart-head">
+      <span class="sym" id="c-sym">–</span>
+      <span class="px num" id="c-px">–</span>
+      <span class="num" id="c-chg"></span>
+      <span id="c-dec"></span>
+      <div class="tf" id="tf">
+        <button data-tf="15m">15m</button><button data-tf="1h" class="on">1h</button><button data-tf="4h">4h</button><button data-tf="1d">1D</button>
+      </div>
+    </div>
+    <div id="chart"><div class="legend" id="legend"></div></div>
+  </section>
+
+  <section>
+    <div class="tabs"><button class="on">Por qué el modelo decidió esto</button></div>
+    <div class="scroll pad" id="why"><div class="empty">Elige una moneda.</div></div>
+  </section>
+
+  <section class="bottom">
+    <div class="tabs" id="bt">
+      <button data-t="eq" class="on">Curva de equity</button>
+      <button data-t="coh">Cohortes cerradas</button>
+      <button data-t="open">Todas las posiciones</button>
+      <button data-t="mkt">Mercado y estrategia</button>
+      <button data-t="imp">Qué mira el modelo</button>
+      <button data-t="con">Consola</button>
+    </div>
+    <div class="scroll" id="bottom"></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmtPx = p => p == null ? "–" : (p >= 1000 ? p.toLocaleString("es", {maximumFractionDigits: 1}) : p >= 1 ? p.toFixed(4) : p.toPrecision(4));
+const pct = (x, d = 2) => x == null || isNaN(x) ? "–" : (x >= 0 ? "+" : "") + (x * 100).toFixed(d) + "%";
+const usd = x => x == null ? "–" : (x >= 0 ? "+" : "") + x.toFixed(2);
+const cls = x => x == null ? "" : x >= 0 ? "pos" : "neg";
+const base = s => s.split("/")[0];
+const badge = d => d === "LONG" ? '<span class="badge b-long">LONG</span>' : d === "SHORT" ? '<span class="badge b-short">SHORT</span>' : '<span class="badge b-none">fuera</span>';
+const api = (u, o) => fetch(u, o).then(r => r.json());
+
+let S = null, PX = {}, AN = null, sel = null, tf = "1h", leftTab = "pos", botTab = "eq";
+let chart, candle, vol, priceLines = [], lastBar = null, eqChart = null;
+
+/* ---------------- gráfico principal (TradingView Lightweight Charts) ---------------- */
+function initChart() {
+  const el = $("#chart");
+  chart = LightweightCharts.createChart(el, {
+    layout: {background: {color: "#12161c"}, textColor: "#8a96a3", fontFamily: "Segoe UI, system-ui"},
+    grid: {vertLines: {color: "#1a2028"}, horzLines: {color: "#1a2028"}},
+    rightPriceScale: {borderColor: "#232a33"}, timeScale: {borderColor: "#232a33", timeVisible: true, secondsVisible: false},
+    crosshair: {mode: 0}, autoSize: true,
+  });
+  candle = chart.addCandlestickSeries({upColor: "#22c55e", downColor: "#ef4444", borderVisible: false, wickUpColor: "#22c55e", wickDownColor: "#ef4444"});
+  vol = chart.addHistogramSeries({priceFormat: {type: "volume"}, priceScaleId: "", color: "#2a3340"});
+  vol.priceScale().applyOptions({scaleMargins: {top: 0.82, bottom: 0}});
+  chart.subscribeCrosshairMove(p => {
+    const d = p && p.seriesData ? p.seriesData.get(candle) : null;
+    $("#legend").innerHTML = d ? `A <span class="num">${fmtPx(d.open)}</span> · M <span class="num">${fmtPx(d.high)}</span> · m <span class="num">${fmtPx(d.low)}</span> · C <span class="num">${fmtPx(d.close)}</span>` : "";
+  });
+}
+
+async function loadCandles(fit = true) {
+  if (!sel) return;
+  const sym = sel;
+  const data = await api(`/api/candles?symbol=${encodeURIComponent(sym)}&tf=${tf}`);
+  if (sym !== sel || data.error) { if (data.error) $("#legend").textContent = "Sin velas: " + data.error; return; }
+  candle.setData(data.map(({time, open, high, low, close}) => ({time, open, high, low, close})));
+  vol.setData(data.map(b => ({time: b.time, value: b.volume, color: b.close >= b.open ? "rgba(34,197,94,.35)" : "rgba(239,68,68,.35)"})));
+  lastBar = data.length ? {...data[data.length - 1]} : null;
+  drawEntries(data);
+  if (fit) chart.timeScale().fitContent();
+}
+
+function drawEntries(data) {
+  priceLines.forEach(l => candle.removePriceLine(l)); priceLines = [];
+  if (!S || !data.length) { candle.setMarkers([]); return; }
+  const times = data.map(b => b.time), markers = [], agg = {};
+  for (const c of S.state.cohorts) for (const p of c.positions) if (p.symbol === sel) {
+    const t = Date.parse(c.opened + "T00:00:00Z") / 1000;
+    const bt = times.find(x => x >= t);
+    const a = (agg[p.side] = agg[p.side] || {n: 0, w: 0, v: 0}); a.n++; a.w += p.notional; a.v += p.notional * p.entry;
+    if (bt) markers.push({time: bt, position: p.side === "LONG" ? "belowBar" : "aboveBar", color: p.side === "LONG" ? "#22c55e" : "#ef4444", shape: p.side === "LONG" ? "arrowUp" : "arrowDown"});
+  }
+  for (const [side, a] of Object.entries(agg))                 // una línea por lado: precio medio de entrada
+    priceLines.push(candle.createPriceLine({price: a.v / a.w, color: side === "LONG" ? "#22c55e" : "#ef4444", lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `${side} medio (${a.n})`}));
+  markers.sort((a, b) => a.time - b.time);
+  candle.setMarkers(markers);
+}
+
+function liveTick() {                                  // el último precio mueve la vela actual
+  if (!sel || !lastBar || !PX[sel]) return;
+  const p = PX[sel].price;
+  lastBar.close = p; lastBar.high = Math.max(lastBar.high, p); lastBar.low = Math.min(lastBar.low, p);
+  candle.update({time: lastBar.time, open: lastBar.open, high: lastBar.high, low: lastBar.low, close: lastBar.close});
+}
+
+function select(sym) {
+  sel = sym;
+  $("#c-sym").textContent = base(sym) + "/USDT";
+  renderHead(); renderLeft(); renderWhy(); loadCandles(true);
+}
+
+function renderHead() {
+  if (!sel) return;
+  const q = PX[sel];
+  $("#c-px").textContent = q ? fmtPx(q.price) : "–";
+  $("#c-chg").innerHTML = q ? `<span class="${cls(q.change)}">${pct(q.change)} 24h</span>` : "";
+  const r = AN && AN.ranking.find(x => x.symbol === sel);
+  $("#c-dec").innerHTML = r ? `${badge(r.decision)} <span class="muted">puesto ${r.rank}/${AN.ranking.length}</span>` : "";
+}
+
+/* ---------------- columna izquierda ---------------- */
+function positionsBySymbol() {
+  const m = {};
+  if (!S) return m;
+  for (const c of S.state.cohorts) for (const p of c.positions) {
+    const k = p.symbol; (m[k] = m[k] || []).push({...p, opened: c.opened});
+  }
+  return m;
+}
+function pnlOf(p) { const q = PX[p.symbol]; if (!q) return null; return (p.side === "LONG" ? 1 : -1) * (q.price / p.entry - 1); }
+
+function renderLeft() {
+  const el = $("#left");
+  if (leftTab === "pos") {
+    const m = positionsBySymbol(), keys = Object.keys(m);
+    if (!keys.length) { el.innerHTML = '<div class="empty">Sin posiciones abiertas. Pulsa «Ejecutar hoy».</div>'; return; }
+    const groups = {LONG: [], SHORT: []};
+    for (const k of keys) {
+      const ps = m[k], side = ps[0].side, pn = ps.map(pnlOf).filter(x => x != null);
+      groups[side].push({k, ps, avg: pn.length ? pn.reduce((a, b) => a + b, 0) / pn.length : null});
+    }
+    let h = "";
+    for (const side of ["LONG", "SHORT"]) {
+      groups[side].sort((a, b) => (b.avg ?? -9) - (a.avg ?? -9));
+      h += `<div class="group-h">${side === "LONG" ? "Largos" : "Cortos"} · ${groups[side].length}</div>`;
+      for (const g of groups[side]) {
+        const q = PX[g.k];
+        h += `<div class="row ${g.k === sel ? "sel" : ""}" data-s="${g.k}">
+          <div class="s">${base(g.k)} ${badge(side)}</div><div class="r num">${q ? fmtPx(q.price) : "–"}</div>
+          <div class="sub">${g.ps.length} entrada${g.ps.length > 1 ? "s" : ""} · desde ${g.ps[0].opened.slice(5)}</div>
+          <div class="r num ${cls(g.avg)}">${pct(g.avg)}</div></div>`;
+      }
+    }
+    el.innerHTML = h;
+  } else {
+    if (!AN) { el.innerHTML = '<div class="empty"><span class="spin"></span>Calculando el ranking…</div>'; return; }
+    const R = AN.ranking, mx = Math.max(...R.map(r => Math.abs(r.score))) || 1;
+    el.innerHTML = `<div class="group-h">${R.length} monedas · señal del ${AN.market.date}</div>` + R.map(r => {
+      const w = Math.abs(r.score) / mx * 50, col = r.score >= 0 ? "var(--green)" : "var(--red)";
+      return `<div class="row ${r.symbol === sel ? "sel" : ""}" data-s="${r.symbol}">
+        <div class="s"><span class="dim num">${String(r.rank).padStart(3, " ")}</span> ${base(r.symbol)} ${r.decision !== "—" ? badge(r.decision) : ""}</div>
+        <div class="r num ${cls(r.score)}">${r.score.toFixed(3)}</div>
+        <div class="sub">7d ${pct(r.ret7, 1)} · 30d ${pct(r.ret30, 1)}</div><div class="r sub num">vol ${(r.vol30 * 100).toFixed(0)}%</div>
+        <div class="scorebar"><i style="margin-left:${r.score >= 0 ? 50 : 50 - w}%;width:${w}%;background:${col}"></i></div></div>`;
+    }).join("");
+  }
+  el.querySelectorAll(".row").forEach(r => r.onclick = () => select(r.dataset.s));
+}
+
+/* ---------------- panel derecho: explicación ---------------- */
+function renderWhy() {
+  const el = $("#why");
+  if (!sel) return;
+  if (!AN) { el.innerHTML = `<div class="empty"><span class="spin"></span>${ANS.msg || "Calculando el análisis del modelo…"}</div>`; return; }
+  const r = AN.ranking.find(x => x.symbol === sel);
+  const pos = (positionsBySymbol()[sel] || []);
+  let h = "";
+  if (!r) h += `<div class="note">${base(sel)} no está en el ranking de hoy (poca liquidez o datos insuficientes).</div>`;
+  else {
+    const verdict = r.decision === "LONG" ? "El modelo espera que <b>suba más que el resto</b> en 7 días → compra (largo)."
+      : r.decision === "SHORT" ? "El modelo espera que <b>rinda peor que el resto</b> en 7 días → venta en corto."
+      : `Queda en la zona media (puesto ${r.rank}); solo opera los ${AN.K} mejores y los ${AN.K} peores.`;
+    h += `<div style="display:flex;justify-content:space-between;align-items:center">${badge(r.decision)}<span class="muted">puesto <b class="num" style="color:var(--fg)">${r.rank}</b> de ${AN.ranking.length}</span></div>
+      <div class="gauge"><b style="left:calc(${(r.pct * 100).toFixed(1)}% - 1px)"></b></div>
+      <div style="display:flex;justify-content:space-between" class="dim"><span>peor (corto)</span><span>mejor (largo)</span></div>
+      <p style="margin:10px 0 0">${verdict}</p>
+      <div class="h">La moneda</div>
+      <div class="grid2">
+        <div class="cell"><div class="l">Puntaje del modelo</div><div class="v num ${cls(r.score)}">${r.score.toFixed(3)}</div></div>
+        <div class="cell"><div class="l">Retorno 1 d</div><div class="v num ${cls(r.ret1)}">${pct(r.ret1)}</div></div>
+        <div class="cell"><div class="l">Retorno 7 d</div><div class="v num ${cls(r.ret7)}">${pct(r.ret7)}</div></div>
+        <div class="cell"><div class="l">Retorno 30 d</div><div class="v num ${cls(r.ret30)}">${pct(r.ret30)}</div></div>
+        <div class="cell"><div class="l">Volatilidad anual</div><div class="v num">${(r.vol30 * 100).toFixed(0)}%</div></div>
+        <div class="cell"><div class="l">Volumen diario (30 d)</div><div class="v num">${(r.qv30 / 1e6).toFixed(1)} M</div></div>
+      </div>
+      <div class="h">Factores que más pesaron</div>`;
+    const mx = Math.max(...r.drivers.map(d => Math.abs(d.contrib))) || 1;
+    for (const d of r.drivers) {
+      const w = Math.abs(d.contrib) / mx * 50, up = d.contrib >= 0;
+      h += `<div class="drv"><div class="t"><span><b>${d.group}</b> · <span class="num">${d.feature}</span></span><span class="num ${up ? "pos" : "neg"}">${up ? "▲ largo" : "▼ corto"} ${d.contrib >= 0 ? "+" : ""}${d.contrib.toFixed(3)}</span></div>
+        <div class="d">${d.desc}${d.value != null ? ` · percentil <b class="num">${Math.round(d.value * 100)}</b> frente a las demás monedas` : ""}</div>
+        <div class="bar"><span class="mid"></span><i style="left:${up ? 50 : 50 - w}%;width:${w}%;background:${up ? "var(--green)" : "var(--red)"}"></i></div></div>`;
+    }
+    const G = Object.entries(r.groups).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])), gm = Math.max(...G.map(g => Math.abs(g[1]))) || 1;
+    h += `<div class="h">Por familia de factores</div>` + G.map(([g, v]) => {
+      const w = Math.abs(v) / gm * 50;
+      return `<div class="drv"><div class="t"><span>${g}</span><span class="num ${cls(v)}">${v >= 0 ? "+" : ""}${v.toFixed(3)}</span></div>
+        <div class="bar"><span class="mid"></span><i style="left:${v >= 0 ? 50 : 50 - w}%;width:${w}%;background:${v >= 0 ? "var(--green)" : "var(--red)"}"></i></div></div>`;
+    }).join("");
+    h += `<div class="note">Contribución = cuánto cambia el puntaje si ese factor se pusiera en la mediana del mercado. Los factores están normalizados por ranking: percentil 90 = más alto que el 90% de las monedas ese día.</div>`;
+  }
+  if (pos.length) {
+    h += `<div class="h">Tus entradas (paper)</div><table><tr><th class="l">Fecha</th><th>Lado</th><th>Entrada</th><th>PnL</th></tr>` +
+      pos.map(p => { const v = pnlOf(p); return `<tr><td class="l">${p.opened}</td><td>${p.side}</td><td class="num">${fmtPx(p.entry)}</td><td class="num ${cls(v)}">${pct(v)}</td></tr>`; }).join("") + "</table>";
+  }
+  el.innerHTML = h;
+}
+
+/* ---------------- panel inferior ---------------- */
+function renderBottom() {
+  const el = $("#bottom");
+  if (botTab !== "eq" && eqChart) { eqChart.remove(); eqChart = null; }
+  if (botTab === "eq") {
+    if (!eqChart) { el.innerHTML = '<div id="equity"></div><div class="legend" style="left:20px;top:auto"></div>'; }
+    const log = S ? S.log : [];
+    if (log.length < 2) { el.innerHTML = `<div class="empty">La curva aparece con 2 o más días de ejecución. ${statsText()}</div>`; eqChart = null; return; }
+    if (!eqChart) {
+      eqChart = LightweightCharts.createChart($("#equity"), {layout: {background: {color: "#12161c"}, textColor: "#8a96a3"}, grid: {vertLines: {color: "#1a2028"}, horzLines: {color: "#1a2028"}}, rightPriceScale: {borderColor: "#232a33"}, timeScale: {borderColor: "#232a33"}, autoSize: true});
+      eqChart._s = eqChart.addAreaSeries({lineColor: "#3b82f6", topColor: "rgba(59,130,246,.25)", bottomColor: "rgba(59,130,246,0)", lineWidth: 2});
+      eqChart._s.createPriceLine({price: S.capital, color: "#5d6875", lineStyle: 2, lineWidth: 1, title: "capital inicial"});
+    }
+    eqChart._s.setData(log.map(r => ({time: r.fecha, value: r.equity_total})));
+    eqChart.timeScale().fitContent();
+    return;
+  }
+  if (botTab === "coh") {
+    const cl = S ? [...S.state.closed].reverse() : [];
+    el.innerHTML = `<div class="pad">${statsText()}</div>` + (cl.length ? `<table><tr><th class="l">Abierta</th><th class="l">Cerrada</th><th>Capital</th><th>PnL USDT</th><th>Retorno</th></tr>` +
+      cl.map(c => `<tr><td class="l">${c.opened}</td><td class="l">${c.closed}</td><td class="num">${c.capital.toFixed(2)}</td><td class="num ${cls(c.pnl)}">${usd(c.pnl)}</td><td class="num ${cls(c.ret)}">${pct(c.ret)}</td></tr>`).join("") + "</table>"
+      : '<div class="empty">Aún no cierra ninguna cohorte (cada una dura 7 días).</div>');
+    return;
+  }
+  if (botTab === "open") {
+    const rows = [];
+    if (S) for (const c of S.state.cohorts) for (const p of c.positions) rows.push({...p, opened: c.opened});
+    el.innerHTML = rows.length ? `<table><tr><th class="l">Cohorte</th><th class="l">Moneda</th><th class="l">Lado</th><th>Entrada</th><th>Precio vivo</th><th>PnL %</th><th>PnL USDT</th><th>Tamaño</th></tr>` +
+      rows.map(p => { const v = pnlOf(p), q = PX[p.symbol]; return `<tr class="click" data-s="${p.symbol}"><td class="l">${p.opened}</td><td class="l"><b>${base(p.symbol)}</b></td><td class="l">${badge(p.side)}</td><td class="num">${fmtPx(p.entry)}</td><td class="num">${q ? fmtPx(q.price) : "–"}</td><td class="num ${cls(v)}">${pct(v)}</td><td class="num ${cls(v)}">${v == null ? "–" : usd(p.notional * v)}</td><td class="num">${p.notional.toFixed(2)}</td></tr>`; }).join("") + "</table>"
+      : '<div class="empty">Sin posiciones abiertas.</div>';
+    el.querySelectorAll("tr.click").forEach(r => r.onclick = () => select(r.dataset.s));
+    return;
+  }
+  if (botTab === "mkt") {
+    if (!AN) { el.innerHTML = `<div class="empty"><span class="spin"></span>${ANS.msg || "Calculando…"}</div>`; return; }
+    const m = AN.market;
+    const card = (l, v, c = "") => `<div class="cell"><div class="l">${l}</div><div class="v num ${c}">${v}</div></div>`;
+    el.innerHTML = `<div class="cards">
+      ${card("BTC 7 días", pct(m.btc_ret7), cls(m.btc_ret7))}${card("BTC 30 días", pct(m.btc_ret30), cls(m.btc_ret30))}
+      ${card("Monedas sobre su media de 20 d", (m.breadth * 100).toFixed(0) + "%")}${card("Retorno medio 7 d del mercado", pct(m.avg_ret7), cls(m.avg_ret7))}
+      ${card("Dispersión entre monedas (7 d)", pct(m.dispersion7).replace("+", ""))}${card("Volatilidad mediana anual", (m.median_vol * 100).toFixed(0) + "%")}
+      ${card("Largos elegidos: retorno 7 d previo", pct(m.long_avg_ret7), cls(m.long_avg_ret7))}${card("Cortos elegidos: retorno 7 d previo", pct(m.short_avg_ret7), cls(m.short_avg_ret7))}
+      ${card("Monedas evaluadas", m.n_valid + " / " + m.n_symbols)}</div>
+      <div class="pad" style="padding-top:0"><div class="note" style="margin-top:0">
+      <b style="color:var(--fg)">Cómo decide la estrategia.</b> Cada día, con la vela diaria cerrada, el modelo (gradient boosting entrenado con 111 factores tipo Alpha158 de Qlib, normalizados por ranking entre monedas) da un puntaje a cada moneda líquida.
+      Compra las ${AN.K} de mayor puntaje y vende en corto las ${AN.K} de menor, mantiene ${AN.H} días y abre una cohorte nueva cada día con 1/${AN.H} del capital: el resultado depende de que las elegidas rindan <i>mejor que las otras</i>, no de que el mercado suba.
+      Modelo entrenado hasta ${AN.model_trained_until}. Análisis calculado ${AN.generated}.<br><br>
+      <b style="color:var(--amber)">Honestidad:</b> en 6 años de backtest la ventaja fue +0.29% por cohorte con IC95% [−0.23%, +0.81%] (no distinguible de cero). Esto es una prueba en papel para medirla en vivo.</div></div>`;
+    return;
+  }
+  if (botTab === "imp") {
+    if (!AN) { el.innerHTML = `<div class="empty"><span class="spin"></span>${ANS.msg || "Calculando…"}</div>`; return; }
+    const G = Object.entries(AN.groups_importance).sort((a, b) => b[1] - a[1]), gm = G[0][1];
+    const T = AN.top_features, tm = T[0].importance;
+    el.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1.4fr;gap:20px" class="pad">
+      <div><div class="h" style="margin-top:0">Peso de cada familia hoy</div>${G.map(([g, v]) => `<div class="drv"><div class="t"><span>${g}</span><span class="num muted">${v.toFixed(3)}</span></div><div class="bar"><i style="left:0;width:${v / gm * 100}%;background:var(--violet)"></i></div></div>`).join("")}</div>
+      <div><div class="h" style="margin-top:0">Los 15 factores más influyentes hoy</div><table>${T.map(t => `<tr><td class="l num" style="width:70px">${t.feature}</td><td class="l muted">${t.desc}</td><td style="width:120px"><div class="bar"><i style="left:0;width:${t.importance / tm * 100}%;background:var(--violet)"></i></div></td></tr>`).join("")}</table></div></div>`;
+    return;
+  }
+  if (botTab === "con") {
+    api("/api/job").then(j => {
+      el.innerHTML = `<pre>${j.name ? `$ ${j.name === "run" ? "run_paper.py --force" : "train.py"}${j.running ? "   (en curso…)" : j.code === 0 ? "   ✔ terminado" : j.code != null ? "   ✖ error " + j.code : ""}\n\n` : "Aquí aparece la salida de «Ejecutar hoy» y «Reentrenar».\n"}${(j.lines || []).join("\n").replace(/</g, "&lt;")}</pre>`;
+      el.scrollTop = el.scrollHeight;
+    });
+  }
+}
+
+function statsText() {
+  if (!S || !S.stats) return '<span class="muted">Sin cohortes cerradas todavía. Referencia del backtest de 6 años: +0.29% por cohorte, IC95% [−0.23%, +0.81%].</span>';
+  const s = S.stats;
+  return `Media <b class="num ${cls(s.mean)}">${pct(s.mean, 3)}</b> por cohorte · IC95% <span class="num">[${pct(s.lo)}, ${pct(s.hi)}]</span> · positivas ${(s.win * 100).toFixed(0)}% · mejor ${pct(s.best)} · peor ${pct(s.worst)} · ${s.n} cohortes (~${s.n_eff.toFixed(0)} independientes).
+    <span style="color:var(--amber)">${s.n_eff < 30 ? "Demasiado pronto para concluir: hacen falta ~30 independientes (≈ 7 meses)." : "Muestra suficiente para una primera lectura."}</span>`;
+}
+
+/* ---------------- cabecera / sondeo ---------------- */
+function renderKpis() {
+  if (!S) return;
+  let u = 0, has = false;
+  for (const c of S.state.cohorts) for (const p of c.positions) { const v = pnlOf(p); if (v != null) { u += p.notional * v; has = true; } }
+  if (!has && S.log.length) u = S.log[S.log.length - 1].no_realizado;
+  const real = S.state.equity - S.capital, tot = S.state.equity + u;
+  $("#k-total").textContent = tot.toLocaleString("es", {minimumFractionDigits: 2, maximumFractionDigits: 2}); $("#k-total").className = "v num " + cls(tot - S.capital);
+  $("#k-real").textContent = usd(real); $("#k-real").className = "v num " + cls(real);
+  $("#k-unreal").textContent = usd(u); $("#k-unreal").className = "v num " + cls(u);
+  $("#k-coh").textContent = `${S.state.cohorts.length} / ${S.state.closed.length}`;
+  $("#k-mean").textContent = S.stats ? pct(S.stats.mean) : "–"; $("#k-mean").className = "v num " + (S.stats ? cls(S.stats.mean) : "");
+  $("#btn-run").title = S.today_done ? "La cohorte de hoy ya está abierta (volver a ejecutar solo cierra las que cumplen 7 días)" : "Abre la cohorte de hoy";
+}
+
+let ANS = {};
+async function pollState() {
+  try { S = await api("/api/state"); renderKpis(); if (leftTab === "pos") renderLeft(); if (["eq", "coh", "open"].includes(botTab)) renderBottom(); }
+  catch (e) { $("#live").innerHTML = '<span class="neg">sin conexión con el servidor</span>'; }
+}
+async function pollPrices() {
+  try {
+    const r = await api("/api/prices" + (sel ? `?extra=${encodeURIComponent(sel)}` : ""));
+    if (r.error) throw new Error(r.error);
+    PX = {...PX, ...r};
+    $("#live").innerHTML = `<span class="dot"></span>${S && S.demo ? "DEMO · " : ""}precios ${new Date().toLocaleTimeString()}`;
+    renderKpis(); renderHead(); liveTick();
+    if (leftTab === "pos") renderLeft();
+    if (botTab === "open") renderBottom();
+  } catch (e) { $("#live").innerHTML = `<span class="neg">precios: ${String(e.message || e).slice(0, 60)}</span>`; }
+}
+async function pollAnalysis(refresh = false) {
+  const r = await api("/api/analysis" + (refresh ? "?refresh=1" : ""));
+  ANS = r.status || {};
+  const changed = r.analysis && (!AN || AN.generated !== r.analysis.generated);
+  if (r.analysis) AN = r.analysis;
+  if (changed || !AN) { renderLeft(); renderWhy(); renderHead(); if (["mkt", "imp"].includes(botTab)) renderBottom(); }
+  if (ANS.state === "error") $("#why").innerHTML = `<div class="note neg">${ANS.msg}</div>`;
+  if (!sel && AN) select((S && S.state.cohorts.length ? S.state.cohorts[S.state.cohorts.length - 1].positions[0].symbol : AN.ranking[0].symbol));
+  $("#btn-an").disabled = ANS.state === "running";
+  if (ANS.state === "running") setTimeout(pollAnalysis, 2500);
+}
+async function job(kind) {
+  const r = await fetch("/api/" + kind, {method: "POST"});
+  if (r.status === 409) { alert("Ya hay una tarea en curso."); return; }
+  botTab = "con"; setTab("#bt", "con"); renderBottom();
+  $("#btn-run").disabled = $("#btn-train").disabled = true;
+  const t = setInterval(async () => {
+    const j = await api("/api/job"); renderBottom();
+    if (!j.running) { clearInterval(t); $("#btn-run").disabled = $("#btn-train").disabled = false; pollState(); pollPrices(); if (kind === "train") pollAnalysis(); }
+  }, 1500);
+}
+function setTab(group, t) { document.querySelectorAll(group + " button").forEach(b => b.classList.toggle("on", b.dataset.t === t)); }
+
+document.querySelectorAll("#lt button").forEach(b => b.onclick = () => { leftTab = b.dataset.t; setTab("#lt", leftTab); renderLeft(); });
+document.querySelectorAll("#bt button").forEach(b => b.onclick = () => { botTab = b.dataset.t; setTab("#bt", botTab); renderBottom(); });
+document.querySelectorAll("#tf button").forEach(b => b.onclick = () => { tf = b.dataset.tf; document.querySelectorAll("#tf button").forEach(x => x.classList.toggle("on", x === b)); loadCandles(true); });
+$("#btn-run").onclick = () => job("run");
+$("#btn-train").onclick = () => { if (confirm("¿Reentrenar el modelo con el historial largo? Tarda unos minutos.")) job("train"); };
+$("#btn-an").onclick = () => { AN = null; renderLeft(); renderWhy(); pollAnalysis(true); };
+
+initChart();
+(async () => {
+  await pollState(); await pollPrices(); await pollAnalysis(); renderBottom();
+  if (!sel && S && S.state.cohorts.length) select(S.state.cohorts[S.state.cohorts.length - 1].positions[0].symbol);
+  setInterval(pollPrices, 8000);
+  setInterval(pollState, 20000);
+  setInterval(() => loadCandles(false), 30000);
+})();
+</script>
+</body>
+</html>
