@@ -30,7 +30,7 @@ def job_api(exchange, symbols, out_dir, days):
     cobertura(f"{exchange} funding", d["funding"]); cobertura(f"{exchange} OI", d["oi"])
 
 
-def job_files(symbols, out_dir, workers):
+def job_files(symbols, out_dir, workers, what="both", oi_limit=None):
     t0, n = time.time(), [0]
 
     def log(msg):                                     # un renglón por símbolo terminado, con avance y tiempo
@@ -40,11 +40,14 @@ def job_files(symbols, out_dir, workers):
     end = (pd.Timestamp.now("UTC") - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     cache = os.path.join(out_dir, "metrics_cache")
     data = {"funding": {}, "oi": {}, "meta": {"source": "data.binance.vision"}}
-    if ok_f:
+    oi_syms = symbols[:oi_limit] if oi_limit else symbols
+    if ok_f and what in ("both", "funding"):
         data["funding"] = dm.download_funding(symbols, "2020-01-01", end, cache, workers, log=log)
-    if ok_oi:
-        data["oi"] = dm.download(symbols, "2021-12-01", end, cache, workers, log=log)["oi"]
-    pickle.dump(data, open(os.path.join(out_dir, "derivs_metrics.pkl"), "wb"))
+    if ok_oi and what in ("both", "oi"):
+        data["oi"] = dm.download(oi_syms, "2021-12-01", end, cache, workers, log=log)["oi"]
+    name = {"both": "derivs_metrics.pkl", "funding": "derivs_funding_bin.pkl", "oi": "derivs_oi_bin.pkl"}[what]
+    pickle.dump(data, open(os.path.join(out_dir, name), "wb"))
+    print(f"guardado {name}")
     print(f"[binance_files] probe OI={ok_oi} funding={ok_f}", flush=True)
     cobertura("binance_files funding", data["funding"]); cobertura("binance_files OI", data["oi"])
 
@@ -56,11 +59,18 @@ def main():
     ap.add_argument("--days", type=int, default=2200)
     ap.add_argument("--workers", type=int, default=32, help="hilos para los archivos públicos de Binance")
     ap.add_argument("--out", default="derivados")
+    ap.add_argument("--what", default="both", choices=["both", "funding", "oi"], help="solo los archivos públicos de Binance: funding (rápido) / oi (lento) / both")
+    ap.add_argument("--rank-by", default=None, help="pickle diario (p.ej. ../data/ohlcv_daily_long.pkl): ordena los símbolos por volumen en USDT reciente")
+    ap.add_argument("--oi-limit", type=int, default=None, help="OI solo para los N primeros símbolos (con --rank-by = los N más líquidos)")
     a = ap.parse_args()
     out_dir = os.path.abspath(a.out); os.makedirs(out_dir, exist_ok=True)
     symbols = [x.strip() for x in open(os.path.join(HERE, "universe_symbols.txt")) if x.strip()]
     may = "BTC ETH SOL BNB XRP DOGE ADA AVAX LINK LTC DOT TRX BCH NEAR ATOM".split()
     symbols.sort(key=lambda s: (may.index(s.split("/")[0]) if s.split("/")[0] in may else 99, s))
+    if a.rank_by:
+        raw = pickle.load(open(a.rank_by, "rb"))
+        vol = {k: float((v["close"] * v["volume"]).tail(60).mean()) for k, v in raw.items() if len(v)}
+        symbols.sort(key=lambda x: -vol.get(x, 0.0))
     if a.limit:
         symbols = symbols[:a.limit]
     skip = set(x for x in a.skip.split(",") if x)
@@ -69,7 +79,7 @@ def main():
         if name not in skip:
             jobs[name] = lambda ex=ex: job_api(ex, symbols, out_dir, a.days)
     if "binance_files" not in skip:
-        jobs["binance_files"] = lambda: job_files(symbols, out_dir, a.workers)
+        jobs["binance_files"] = lambda: job_files(symbols, out_dir, a.workers, a.what, a.oi_limit)
     t0 = time.time()
     print(f"{len(symbols)} símbolos | fuentes en paralelo: {list(jobs)} | salida: {out_dir}", flush=True)
     with cf.ThreadPoolExecutor(len(jobs)) as pool:
