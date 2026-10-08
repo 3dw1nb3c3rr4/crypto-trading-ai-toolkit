@@ -65,13 +65,57 @@ class AccountData:
     def stale(self):
         return not self.d or time.time() - self.d.get("updated", 0) > TTL
 
+    def _env_exchange(self, env, keys):
+        """Exchange autenticado en un entorno concreto: real | demo (demo trading) | testnet (testnet antigua)."""
+        if self._make:
+            return self._make(env, keys)
+        import ccxt
+        opts = {"enableRateLimit": True, "options": {"defaultType": "swap", "fetchCurrencies": False},
+                "apiKey": keys["apiKey"], "secret": keys["secret"]}
+        if keys.get("password"):
+            opts["password"] = keys["password"]
+        ex = getattr(ccxt, self.cfg["exchange"])(opts)
+        if env == "demo" and self.cfg["exchange"] == "binanceusdm" and hasattr(ex, "enable_demo_trading"):
+            ex.enable_demo_trading(True)
+        elif env in ("demo", "testnet"):
+            ex.set_sandbox_mode(True)
+        return ex
+
+    def _find_env(self):
+        """Prueba tus claves guardadas (REAL primero, luego DEMO) en cada entorno y devuelve el primero que las acepta.
+        Así funcionan aunque estén guardadas en el lugar equivocado (p. ej. claves reales guardadas como DEMO)."""
+        tried = []
+        envs = ["real", "demo", "testnet"] if self.cfg["exchange"] == "binanceusdm" else ["real", "demo"]
+        for slot in ("real", "demo"):
+            keys = cl.load_keys(self.cfg["exchange"], slot)
+            if not keys:
+                continue
+            for env in [slot] + [e for e in envs if e != slot]:
+                try:
+                    ex = self._env_exchange(env, keys)
+                    ex.load_markets()
+                    ex.fetch_leverage_tiers(["BTC/USDT:USDT"])          # consulta firmada: confirma que las claves valen aquí
+                    return slot, env, ex, tried
+                except Exception as e:                            # noqa: BLE001
+                    tried.append(f"claves {slot.upper()} en {env}: {type(e).__name__}: {str(e)[:90]}")
+        return None, None, None, tried
+
     def refresh(self, symbols=("BTC/USDT:USDT",)):
         mode, keys = self._keys()
         if not keys:
             raise ValueError("no hay claves guardadas: los cálculos usan los valores de la configuración")
-        ex = self._exchange(mode, keys)
-        ex.load_markets()
-        out = dict(exchange=self.cfg["exchange"], source=mode, updated=time.time(), fees={}, tiers={}, errors=[])
+        if self._make:                                             # pruebas: exchange simulado
+            slot, env, ex = mode, mode, self._exchange(mode, keys)
+            ex.load_markets()
+        else:
+            slot, env, ex, tried = self._find_env()
+            if ex is None:
+                raise ValueError("tus claves no funcionan en ningún entorno (real, demo, testnet). " + " | ".join(tried[:4]))
+        mode = env
+        out = dict(exchange=self.cfg["exchange"], source=mode, slot=slot, updated=time.time(), fees={}, tiers={}, errors=[])
+        if slot != env:
+            out["errors"].append(f"ojo: tus claves están guardadas como {slot.upper()} pero funcionan en {env.upper()}; "
+                                 f"guárdalas como {'REAL' if env == 'real' else 'DEMO'} para operar con ellas")
         try:
             raw = ex.fetch_leverage_tiers()
             for sym, tl in raw.items():
@@ -124,7 +168,7 @@ class AccountData:
     def status(self):
         d = self.d
         f = d.get("fees", {}).get("BTC/USDT:USDT")
-        return dict(available=bool(d), source=d.get("source"), updated=d.get("updated"), n_tiers=len(d.get("tiers", {})),
+        return dict(available=bool(d), source=d.get("source"), slot=d.get("slot"), updated=d.get("updated"), n_tiers=len(d.get("tiers", {})),
                     maker=f[0] if f else None, taker=f[1] if f else None, hedged=d.get("hedged"), errors=d.get("errors", []))
 
     def fetch_fee(self, symbol):
