@@ -1,0 +1,779 @@
+{
+ "generated": "2026-10-07T14:02:02Z",
+ "gate": {
+  "min_trades": 300,
+  "min_pf": 1.1,
+  "min_fold_trades": 30,
+  "min_folds": 2,
+  "max_dd": -0.3
+ },
+ "haircut": 0.0015,
+ "enabled": [],
+ "watchlist": [],
+ "strategies": [
+  {
+   "name": "indicadores:rsi_reversion",
+   "kind": "trades",
+   "n": 2156,
+   "exp_net": -0.003323564630556126,
+   "exp_net_raw": -0.0018235646305561242,
+   "ci_lo": -0.012499383463415292,
+   "ci_hi": 0.006278749770877969,
+   "pf": 0.9157432328790931,
+   "win": 0.35528756957328383,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 615,
+     "exp_net": 0.004161952279788637
+    },
+    {
+     "fold": 2,
+     "n": 782,
+     "exp_net": -0.012982880488316223
+    },
+    {
+     "fold": 3,
+     "n": 759,
+     "exp_net": 0.0005631179793336822
+    }
+   ],
+   "port_ret": -0.4723820711396217,
+   "port_dd": -0.555432631675498,
+   "config": {
+    "familia": "rsi_reversion",
+    "ultima_config": "rsi_reversion#1|tp0.12|sl0.06|h14"
+   },
+   "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-1.250%, +0.628%]",
+    "neto <= 0 en el/los periodo(s) [2]",
+    "factor de beneficio 0.92 < 1.1",
+    "ca\u00edda m\u00e1xima -56% peor que -30%"
+   ]
+  },
+  {
+   "name": "indicadores:bollinger_reversion",
+   "kind": "trades",
+   "n": 5829,
+   "exp_net": -0.003644429420172895,
+   "exp_net_raw": -0.002144429420172894,
+   "ci_lo": -0.007304110628323011,
+   "ci_hi": 0.0002802028189260066,
+   "pf": 0.8201846780804859,
+   "win": 0.15114084748670442,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 1977,
+     "exp_net": -0.0026987296731912176
+    },
+    {
+     "fold": 2,
+     "n": 2003,
+     "exp_net": -0.0040989901865080385
+    },
+    {
+     "fold": 3,
+     "n": 1849,
+     "exp_net": -0.004163176410337033
+    }
+   ],
+   "port_ret": -0.8591071521347738,
+   "port_dd": -0.8710016255388526,
+   "config": {
+    "familia": "bollinger_reversion",
+    "ultima_config": "bollinger_reversion#0|tp0.12|sl0.02|h14"
+   },
+   "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.730%, +0.028%]",
+    "neto <= 0 en el/los periodo(s) [1, 2, 3]",
+    "factor de beneficio 0.82 < 1.1",
+    "ca\u00edda m\u00e1xima -87% peor que -30%"
+   ]
+  },
+  {
+   "name": "indicadores:donchian_breakout",
+   "kind": "trades",
+   "n": 2708,
+   "exp_net": -0.0019482665588345133,
+   "exp_net_raw": -0.00044826655883451155,
+   "ci_lo": -0.011741289781392853,
+   "ci_hi": 0.00905403072325053,
+   "pf": 0.9398466293310845,
+   "win": 0.39254062038404725,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 841,
+     "exp_net": -0.005113726033464594
+    },
+    {
+     "fold": 2,
+     "n": 775,
+     "exp_net": -0.012094802842644203
+    },
+    {
+     "fold": 3,
+     "n": 1092,
+     "exp_net": 0.007690668457755605
+    }
+   ],
+   "port_ret": -0.3387824635860365,
+   "port_dd": -0.40985935351624636,
+   "config": {
+    "familia": "donchian_breakout",
+    "ultima_config": "donchian_breakout#0|tp0.12|sl0.04|h7"
+   },
+   "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-1.174%, +0.905%]",
+    "neto <= 0 en el/los periodo(s) [1, 2]",
+    "factor de beneficio 0.94 < 1.1",
+    "ca\u00edda m\u00e1xima -41% peor que -30%"
+   ]
+  },
+  {
+   "name": "indicadores:trend_pullback",
+   "kind": "trades",
+   "n": 1054,
+   "exp_net": -0.0032085209872325876,
+   "exp_net_raw": -0.0017085209872325859,
+   "ci_lo": -0.01446472992284902,
+   "ci_hi": 0.00846639241192381,
+   "pf": 0.9214071450951739,
+   "win": 0.3557874762808349,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 272,
+     "exp_net": 0.007141345456055654
+    },
+    {
+     "fold": 2,
+     "n": 401,
+     "exp_net": 0.0029834389456820827
+    },
+    {
+     "fold": 3,
+     "n": 381,
+     "exp_net": -0.017114399217345932
+    }
+   ],
+   "port_ret": -0.3422918049235836,
+   "port_dd": -0.41623550954073746,
+   "config": {
+    "familia": "trend_pullback",
+    "ultima_config": "trend_pullback#2|tp0.12|sl0.06|h14"
+   },
+   "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-1.446%, +0.847%]",
+    "neto <= 0 en el/los periodo(s) [3]",
+    "factor de beneficio 0.92 < 1.1",
+    "ca\u00edda m\u00e1xima -42% peor que -30%"
+   ]
+  },
+  {
+   "name": "indicadores:exhaustion_reversal",
+   "kind": "trades",
+   "n": 1762,
+   "exp_net": -0.008391159586962411,
+   "exp_net_raw": -0.006891159586962408,
+   "ci_lo": -0.017079718957448507,
+   "ci_hi": 0.0007734398995454736,
+   "pf": 0.7772693310135063,
+   "win": 0.30703745743473326,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 642,
+     "exp_net": -0.0030047975077881596
+    },
+    {
+     "fold": 2,
+     "n": 626,
+     "exp_net": -0.01656276744920329
+    },
+    {
+     "fold": 3,
+     "n": 494,
+     "exp_net": -0.005036135159972691
+    }
+   ],
+   "port_ret": -0.5333324594395659,
+   "port_dd": -0.5982048971875438,
+   "config": {
+    "familia": "exhaustion_reversal",
+    "ultima_config": "exhaustion_reversal#2|tp0.12|sl0.06|h3"
+   },
+   "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-1.708%, +0.077%]",
+    "neto <= 0 en el/los periodo(s) [1, 2, 3]",
+    "factor de beneficio 0.78 < 1.1",
+    "ca\u00edda m\u00e1xima -60% peor que -30%"
+   ]
+  },
+  {
+   "name": "indicadores:momentum",
+   "kind": "trades",
+   "n": 6719,
+   "exp_net": -0.0018982600466637847,
+   "exp_net_raw": -0.0003982600466637834,
+   "ci_lo": -0.007817054658716696,
+   "ci_hi": 0.004339733881209267,
+   "pf": 0.9441866837612236,
+   "win": 0.3393362107456467,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 3230,
+     "exp_net": 0.0012968260904241895
+    },
+    {
+     "fold": 2,
+     "n": 2239,
+     "exp_net": -0.0025107326276425207
+    },
+    {
+     "fold": 3,
+     "n": 1250,
+     "exp_net": -0.009057301737849997
+    }
+   ],
+   "port_ret": -0.5049190947301827,
+   "port_dd": -0.5223389649108104,
+   "config": {
+    "familia": "momentum",
+    "ultima_config": "momentum#1|tp0.12|sl0.06|h7"
+   },
+   "notes": "walk-forward: config elegida por periodo con datos previos",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.782%, +0.434%]",
+    "neto <= 0 en el/los periodo(s) [2, 3]",
+    "factor de beneficio 0.94 < 1.1",
+    "ca\u00edda m\u00e1xima -52% peor que -30%"
+   ]
+  },
+  {
+   "name": "tendencia:donchian_trailing",
+   "kind": "trades",
+   "n": 508,
+   "exp_net": 0.013275508277015123,
+   "exp_net_raw": 0.014775508277015117,
+   "ci_lo": -0.036299044390709516,
+   "ci_hi": 0.056633001339375835,
+   "pf": 1.1436479590061956,
+   "win": 0.4547244094488189,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 156,
+     "exp_net": 0.05605230067533455
+    },
+    {
+     "fold": 2,
+     "n": 166,
+     "exp_net": -0.0019896692416615795
+    },
+    {
+     "fold": 3,
+     "n": 186,
+     "exp_net": -0.008978040895229496
+    }
+   ],
+   "port_ret": -0.23143564074497036,
+   "port_dd": -0.2770445278376033,
+   "config": {
+    "ultima_config": "N55|X20|ATR3.0"
+   },
+   "notes": "Donchian + stop ATR + salida trailing, sin take profit; walk-forward",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-3.630%, +5.663%]",
+    "neto <= 0 en el/los periodo(s) [2, 3]"
+   ]
+  },
+  {
+   "name": "modelo:techo_suelo",
+   "kind": "trades",
+   "n": 1125,
+   "exp_net": -0.005397948807158902,
+   "exp_net_raw": -0.003897948807158831,
+   "ci_lo": -0.01288463998547388,
+   "ci_hi": 0.0016293492958388822,
+   "pf": 0.762439598560017,
+   "win": 0.47733333333333333,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 375,
+     "exp_net": -0.0006885866666666145
+    },
+    {
+     "fold": 2,
+     "n": 375,
+     "exp_net": -0.010193866666666636
+    },
+    {
+     "fold": 3,
+     "n": 375,
+     "exp_net": -0.005311393088143264
+    }
+   ],
+   "port_ret": -0.2703678041508977,
+   "port_dd": -0.27346599065606175,
+   "config": null,
+   "notes": "config nativa TP4/SL4/7d en el tramo de validaci\u00f3n",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-1.288%, +0.163%]",
+    "neto <= 0 en el/los periodo(s) [1, 2, 3]",
+    "factor de beneficio 0.76 < 1.1"
+   ]
+  },
+  {
+   "name": "modelo:cerebro_rl",
+   "kind": "trades",
+   "n": 16845,
+   "exp_net": -0.0038176065073198357,
+   "exp_net_raw": -0.002317606507319835,
+   "ci_lo": -0.004295207048575211,
+   "ci_hi": -0.003326944609090758,
+   "pf": 0.5984170477031824,
+   "win": 0.47812407242505195,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 3914,
+     "exp_net": -0.003955472981843118
+    },
+    {
+     "fold": 2,
+     "n": 5154,
+     "exp_net": -0.003787099560070579
+    },
+    {
+     "fold": 3,
+     "n": 3802,
+     "exp_net": -0.0037284810925178207
+    },
+    {
+     "fold": 4,
+     "n": 3975,
+     "exp_net": -0.003806657639877271
+    }
+   ],
+   "port_ret": -0.8668225189255555,
+   "port_dd": -0.8675509469189069,
+   "config": null,
+   "notes": "velas 5m OKX, TP=SL=1.5%, 4 periodos de prueba",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.430%, -0.333%]",
+    "neto <= 0 en el/los periodo(s) [1, 2, 3, 4]",
+    "factor de beneficio 0.60 < 1.1",
+    "ca\u00edda m\u00e1xima -87% peor que -30%"
+   ]
+  },
+  {
+   "name": "modelo:gradient_boosting_dir12",
+   "kind": "trades",
+   "n": 29035,
+   "exp_net": -0.003014705143868923,
+   "exp_net_raw": -0.001514705247245729,
+   "ci_lo": -0.0033134352415800095,
+   "ci_hi": -0.0027315784245729446,
+   "pf": 0.41255372762680054,
+   "win": 0.3162734630618219,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 696,
+     "exp_net": -0.0019085019594058394
+    },
+    {
+     "fold": 2,
+     "n": 10000,
+     "exp_net": -0.002834727754816413
+    },
+    {
+     "fold": 3,
+     "n": 8068,
+     "exp_net": -0.003266178071498871
+    },
+    {
+     "fold": 4,
+     "n": 10271,
+     "exp_net": -0.0030673593282699585
+    }
+   ],
+   "port_ret": -0.9401103756390211,
+   "port_dd": -0.9407176571500421,
+   "config": null,
+   "notes": "walk-forward con purga, 5m OKX",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.331%, -0.273%]",
+    "neto <= 0 en el/los periodo(s) [1, 2, 3, 4]",
+    "factor de beneficio 0.41 < 1.1",
+    "ca\u00edda m\u00e1xima -94% peor que -30%"
+   ]
+  },
+  {
+   "name": "modelo:gradient_boosting_dir48",
+   "kind": "trades",
+   "n": 10818,
+   "exp_net": -0.003265389706939459,
+   "exp_net_raw": -0.0017653896939009428,
+   "ci_lo": -0.0041475542820990086,
+   "ci_hi": -0.002436811337247491,
+   "pf": 0.576779842376709,
+   "win": 0.38851913477537436,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 287,
+     "exp_net": -0.005315619520843029
+    },
+    {
+     "fold": 2,
+     "n": 4570,
+     "exp_net": -0.0024600031320005655
+    },
+    {
+     "fold": 3,
+     "n": 2966,
+     "exp_net": -0.0037441037129610777
+    },
+    {
+     "fold": 4,
+     "n": 2995,
+     "exp_net": -0.0038237650878727436
+    }
+   ],
+   "port_ret": -0.632866892437314,
+   "port_dd": -0.6365431995265102,
+   "config": null,
+   "notes": "walk-forward con purga, 5m OKX",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.415%, -0.244%]",
+    "neto <= 0 en el/los periodo(s) [1, 2, 3, 4]",
+    "factor de beneficio 0.58 < 1.1",
+    "ca\u00edda m\u00e1xima -64% peor que -30%"
+   ]
+  },
+  {
+   "name": "modelo:gradient_boosting_xs12",
+   "kind": "trades",
+   "n": 15472,
+   "exp_net": -0.00292816347850609,
+   "exp_net_raw": -0.0014281634785060899,
+   "ci_lo": -0.00299969698149549,
+   "ci_hi": -0.002858975987824389,
+   "pf": 0.06784444434222252,
+   "win": 0.1078076525336091,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 4320,
+     "exp_net": -0.0028247715151409427
+    },
+    {
+     "fold": 2,
+     "n": 4320,
+     "exp_net": -0.0029573240226168866
+    },
+    {
+     "fold": 3,
+     "n": 4320,
+     "exp_net": -0.002964986350221306
+    },
+    {
+     "fold": 4,
+     "n": 2512,
+     "exp_net": -0.002992496649433265
+    }
+   ],
+   "port_ret": null,
+   "port_dd": null,
+   "config": null,
+   "notes": "walk-forward con purga, 5m OKX",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.300%, -0.286%]",
+    "neto <= 0 en el/los periodo(s) [1, 2, 3, 4]",
+    "factor de beneficio 0.07 < 1.1"
+   ]
+  },
+  {
+   "name": "modelo:gradient_boosting_xs48",
+   "kind": "trades",
+   "n": 3866,
+   "exp_net": -0.0031887702125884963,
+   "exp_net_raw": -0.001688770212588496,
+   "ci_lo": -0.0034922771448771092,
+   "ci_hi": -0.0029109923242682254,
+   "pf": 0.20734306508264366,
+   "win": 0.2405587170201759,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 1080,
+     "exp_net": -0.0027417000700196274
+    },
+    {
+     "fold": 2,
+     "n": 1080,
+     "exp_net": -0.0033048165457944274
+    },
+    {
+     "fold": 3,
+     "n": 1080,
+     "exp_net": -0.003197675297436331
+    },
+    {
+     "fold": 4,
+     "n": 626,
+     "exp_net": -0.0037445021973749357
+    }
+   ],
+   "port_ret": null,
+   "port_dd": null,
+   "config": null,
+   "notes": "walk-forward con purga, 5m OKX",
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.349%, -0.291%]",
+    "neto <= 0 en el/los periodo(s) [1, 2, 3, 4]",
+    "factor de beneficio 0.21 < 1.1"
+   ]
+  },
+  {
+   "name": "modelo:xs_v2_alpha158_rank_7d",
+   "kind": "trades",
+   "n": 1725,
+   "exp_net": 0.0010906234975359994,
+   "exp_net_raw": 0.002590623497536,
+   "ci_lo": -0.004238921125114108,
+   "ci_hi": 0.006257717950740834,
+   "pf": 1.0582733391044394,
+   "win": 0.552463768115942,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 24,
+     "exp_net": 0.015960044585445213
+    },
+    {
+     "fold": 2,
+     "n": 180,
+     "exp_net": -0.0020687971854896465
+    },
+    {
+     "fold": 3,
+     "n": 180,
+     "exp_net": -0.0019096188676941436
+    },
+    {
+     "fold": 4,
+     "n": 180,
+     "exp_net": 0.00694092002955655
+    },
+    {
+     "fold": 5,
+     "n": 180,
+     "exp_net": -0.013769860234876814
+    },
+    {
+     "fold": 6,
+     "n": 180,
+     "exp_net": 0.00324417712587078
+    },
+    {
+     "fold": 7,
+     "n": 180,
+     "exp_net": 0.003337832853672048
+    },
+    {
+     "fold": 8,
+     "n": 180,
+     "exp_net": 0.0048692299919032385
+    },
+    {
+     "fold": 9,
+     "n": 180,
+     "exp_net": 0.007754311816122989
+    },
+    {
+     "fold": 10,
+     "n": 180,
+     "exp_net": -0.009168622662240078
+    },
+    {
+     "fold": 11,
+     "n": 81,
+     "exp_net": 0.02020939934778306
+    }
+   ],
+   "port_ret": null,
+   "port_dd": null,
+   "config": null,
+   "notes": "IC medio +0.132; cohortes de 7 d\u00edas, K=10 por lado",
+   "robustness": [
+    {
+     "name": "universo_estable",
+     "exp_net": 0.0012206565321379141,
+     "ci_lo": -0.0036418161729415235,
+     "ci_hi": 0.0059516188208962656,
+     "n": 1725
+    },
+    {
+     "name": "50%_mas_liquido",
+     "exp_net": 0.00564946473786875,
+     "ci_lo": -0.000339996024709267,
+     "ci_hi": 0.011327736713518926,
+     "n": 1053
+    },
+    {
+     "name": "costo_doble",
+     "exp_net": -0.0003093765024640003,
+     "ci_lo": -0.005638921125114107,
+     "ci_hi": 0.004857717950740834,
+     "n": 1725
+    }
+   ],
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.424%, +0.626%]",
+    "neto <= 0 en el/los periodo(s) [2, 3, 5, 10]",
+    "factor de beneficio 1.06 < 1.1"
+   ]
+  },
+  {
+   "name": "modelo:xs_v2_base+alpha158_rank_7d",
+   "kind": "trades",
+   "n": 1725,
+   "exp_net": 0.0010597160696527467,
+   "exp_net_raw": 0.002559716069652748,
+   "ci_lo": -0.00447115296792863,
+   "ci_hi": 0.006297706255733101,
+   "pf": 1.0567654109373676,
+   "win": 0.5588405797101449,
+   "folds": [
+    {
+     "fold": 1,
+     "n": 24,
+     "exp_net": 0.018160772236469183
+    },
+    {
+     "fold": 2,
+     "n": 180,
+     "exp_net": -0.005976993868848873
+    },
+    {
+     "fold": 3,
+     "n": 180,
+     "exp_net": -0.00518529837016295
+    },
+    {
+     "fold": 4,
+     "n": 180,
+     "exp_net": 0.012472787726216314
+    },
+    {
+     "fold": 5,
+     "n": 180,
+     "exp_net": -0.011875103604149888
+    },
+    {
+     "fold": 6,
+     "n": 180,
+     "exp_net": 0.000862879515774748
+    },
+    {
+     "fold": 7,
+     "n": 180,
+     "exp_net": 0.003258150482932525
+    },
+    {
+     "fold": 8,
+     "n": 180,
+     "exp_net": 0.006015654447020431
+    },
+    {
+     "fold": 9,
+     "n": 180,
+     "exp_net": 0.0117811962175163
+    },
+    {
+     "fold": 10,
+     "n": 180,
+     "exp_net": -0.00965567001105992
+    },
+    {
+     "fold": 11,
+     "n": 81,
+     "exp_net": 0.01341460777941684
+    }
+   ],
+   "port_ret": null,
+   "port_dd": null,
+   "config": null,
+   "notes": "IC medio +0.141; cohortes de 7 d\u00edas, K=10 por lado",
+   "robustness": [
+    {
+     "name": "universo_estable",
+     "exp_net": 0.0013730925228731686,
+     "ci_lo": -0.003544322937125201,
+     "ci_hi": 0.006181990775522094,
+     "n": 1725
+    },
+    {
+     "name": "50%_mas_liquido",
+     "exp_net": 0.004921931007003421,
+     "ci_lo": -0.0017538299083408356,
+     "ci_hi": 0.01103377755098629,
+     "n": 1053
+    },
+    {
+     "name": "costo_doble",
+     "exp_net": -0.00034028393034725256,
+     "ci_lo": -0.005871152967928629,
+     "ci_hi": 0.004897706255733101,
+     "n": 1725
+    }
+   ],
+   "status": "rechazada",
+   "enabled": false,
+   "reasons": [
+    "IC95% del neto incluye cero o es negativo [-0.447%, +0.630%]",
+    "neto <= 0 en el/los periodo(s) [2, 3, 5, 10]",
+    "factor de beneficio 1.06 < 1.1"
+   ]
+  }
+ ]
+}
