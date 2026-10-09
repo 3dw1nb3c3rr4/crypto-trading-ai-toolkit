@@ -815,6 +815,7 @@ def main():
     ap.add_argument("--demo", action="store_true", help="sin internet: datos locales")
     ap.add_argument("--data", default=os.path.join(ROOT, "data", "ohlcv_daily_long.pkl"))
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--auto-bot", action="store_true", help="al abrir, ejecuta el bot del día si aún no se ejecutó hoy")
     a = ap.parse_args()
     cfg = cl.load_config()
     if a.exchange:
@@ -829,6 +830,14 @@ def main():
         json.dump(st, open(STATE, "w"))
         lg.to_csv(LOG, index=False)
     hub.start_analysis()
+    if a.auto_bot:
+        if hub.bot_state()["today_done"]:
+            print("El bot ya se ejecutó hoy: no se abre otra cohorte.")
+        elif not os.path.exists(MODEL):
+            print(f"No hay modelo {cfg['bot_variant']} entrenado: pulsa «Reentrenar» en el panel.")
+        else:
+            print(f"Ejecutando el bot del día (variante {cfg['bot_variant']}); el avance se ve en la pestaña Consola del panel.")
+            hub.run_job("run", hub.bot_args())
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(hub))
     except OSError:
