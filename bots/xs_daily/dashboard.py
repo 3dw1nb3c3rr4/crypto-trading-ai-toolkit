@@ -366,9 +366,24 @@ class Hub:
         return cfg
 
     # ---------------------------------------------------------------- motor de la cuenta paper manual
+    def _bot_stops(self):
+        """Revisa los stops del bot (velas de 1 h) cada 10 min, para verlos cerrarse sin esperar al día siguiente."""
+        if self.demo or self.job["running"] or not os.path.exists(STATE):
+            return
+        import run_paper
+        st = json.load(open(STATE))
+        hits = run_paper.check_stops(st, self.src.ex, log=lambda m: self.note("bot: " + m.strip(), "warn"))
+        if hits or any(p.get("checked_ts") for c in st["cohorts"] for p in c["positions"]):
+            if not self.job["running"]:                     # no pisar una ejecución del bot en curso
+                json.dump(st, open(STATE, "w"), indent=1)
+
     def _engine(self):
+        last_bot_check = 0.0
         while True:
             try:
+                if time.time() - last_bot_check > 600:
+                    last_bot_check = time.time()
+                    self._bot_stops()
                 if self.cfg["mode"] == "paper":
                     syms = set(self.paper.s["positions"]) | {o["symbol"] for o in self.paper.s["orders"]}
                     if syms:
@@ -551,7 +566,7 @@ class Hub:
         c = self.cfg
         return [os.path.join(HERE, "run_paper.py"), "--force", "--capital", str(c["bot_capital"]), "--exchange", c["exchange"],
                 "--universe", c["universe"], "--fee", str(self.acct.fee_for("BTC/USDT:USDT")[1]), "--slip", str(c["slippage"]), "--state", STATE, "--log", LOG,
-                "--variant", c["bot_variant"], "--model", MODEL]
+                "--variant", c["bot_variant"], "--model", MODEL, "--sl-atr", str(c["bot_sl_atr"])]
 
     # ---------------------------------------------------------------- reinicio con copia de seguridad
     def reset(self, what, capital):

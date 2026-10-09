@@ -26,6 +26,7 @@ DEFAULTS = dict(
     max_position_usdt=100.0,         # tope de valor por orden en demo/real (seguridad)
     margin_mode="isolated",
     bot_variant="D",                 # D (original) | FO (con funding y open interest)
+    bot_sl_atr=2.0,                  # stop loss del bot en múltiplos de ATR(14) (0 = sin stop); ver backtesting/xs_stops.py
 )
 EXCHANGES = ("binanceusdm", "okx", "bybit")
 
@@ -65,6 +66,9 @@ def validate(cfg: dict) -> dict:
     out["max_leverage"] = int(out["max_leverage"])
     if not 1 <= out["max_leverage"] <= 125 or not 1 <= out["default_leverage"] <= out["max_leverage"]:
         raise ValueError("apalancamiento fuera de rango (1 <= por defecto <= máximo <= 125)")
+    out["bot_sl_atr"] = float(out["bot_sl_atr"])
+    if not 0 <= out["bot_sl_atr"] <= 10:
+        raise ValueError("stop del bot entre 0 (sin stop) y 10 ATR")
     if out["bot_variant"] not in ("D", "FO"):
         raise ValueError("variante del bot inválida")
     if out["margin_mode"] not in ("isolated", "cross"):

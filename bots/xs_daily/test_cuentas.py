@@ -208,6 +208,30 @@ def t_datos():
     cl.delete_keys("binanceusdm", "real")
 
 
+def t_stops():
+    import run_paper as rp
+    H = 3_600_000
+
+    class StopEx:
+        def __init__(self, bars):
+            self.bars = bars
+
+        def fetch_ohlcv(self, s, tf, since=None, limit=500):
+            return [b for b in self.bars if b[0] + H > (since or 0)]
+    t0 = 1_700_000_000_000 - (1_700_000_000_000 % H)
+    st = {"cohorts": [{"opened": "2023-11-14", "opened_ts": t0 + 1000, "positions": [
+        dict(symbol="A/USDT:USDT", side="LONG", entry=100.0, notional=10, sl=95.0),
+        dict(symbol="B/USDT:USDT", side="SHORT", entry=100.0, notional=10, sl=105.0)]}]}
+    ex = StopEx([[t0, 100, 101, 99, 100, 1], [t0 + H, 99, 100, 96, 97, 1], [t0 + 2 * H, 97, 98, 94, 95, 1]])
+    rp.check_stops(st, ex, log=lambda *a: None)
+    a, b = st["cohorts"][0]["positions"]
+    check("stop largo: sale al precio del stop con deslizamiento", close(a["exit"], 95 * (1 - rp.STOP_SLIP)) and a["exit_ts"] == t0 + 2 * H)
+    check("corto sin tocar el stop sigue abierto", "exit" not in b and b["checked_ts"] == t0 + 2 * H)
+    ex.bars.append([t0 + 3 * H, 110, 112, 108, 111, 1])      # hueco al alza: abre por encima del stop del corto
+    rp.check_stops(st, ex, log=lambda *a: None)
+    check("stop con hueco: sale al open, no al stop", close(b["exit"], 110 * (1 + rp.STOP_SLIP)))
+
+
 if __name__ == "__main__":
-    t_paper(); t_real(); t_misc(); t_datos()
+    t_paper(); t_real(); t_misc(); t_datos(); t_stops()
     print(f"test_cuentas: {len(OK)} comprobaciones OK")

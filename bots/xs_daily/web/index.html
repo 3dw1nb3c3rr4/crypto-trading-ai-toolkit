@@ -198,6 +198,7 @@ pre{margin:0;padding:12px;font:12px/1.5 var(--mono);color:#b9c4cf;white-space:pr
       <select id="c-universe"><option value="both">Cripto + acciones tokenizadas</option><option value="crypto">Solo cripto</option><option value="stocks">Solo acciones/TradFi tokenizadas</option></select>
       <label>Variante del bot (estrategia)</label>
       <select id="c-bot_variant"><option value="D">D · original (111 factores de precio)</option><option value="FO">FO · precio + funding + open interest (mejor en backtest)</option></select>
+      <label>Stop loss del bot (× ATR de 14 días; 0 = sin stop)</label><input id="c-bot_sl_atr" type="number" step="0.5" min="0" max="10">
       <label>Capital del bot (paper)</label><input id="c-bot_capital" type="number" step="1">
       <label>Capital de la cuenta manual paper (se aplica al reiniciar)</label><input id="c-manual_capital" type="number" step="1">
     </div>
@@ -321,6 +322,7 @@ function drawEntries() {
     let bt = null; for (const x of times) { if (x <= t) bt = x; else break; }
     const k = "bot " + p.side, a = (agg[k] = agg[k] || {n: 0, w: 0, v: 0, side: p.side}); a.n++; a.w += p.notional; a.v += p.notional * p.entry;
     if (bt) markers.push({time: bt, position: p.side === "LONG" ? "belowBar" : "aboveBar", color: p.side === "LONG" ? "#22c55e" : "#ef4444", shape: p.side === "LONG" ? "arrowUp" : "arrowDown"});
+    if (p.sl && !p.exit) priceLines.push(candle.createPriceLine({price: p.sl, color: "#f97316", lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: `stop bot ${c.opened.slice(5)}`}));
   }
   for (const [k, a] of Object.entries(agg)) priceLines.push(candle.createPriceLine({price: a.v / a.w, color: a.side === "LONG" ? "#22c55e" : "#ef4444", lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `${k} (${a.n})`}));
   const mp = ACC && ACC.positions ? ACC.positions.find(p => p.symbol === sel) : null;
@@ -379,7 +381,7 @@ function botPositionsBySymbol() {
   if (ST) for (const c of ST.bot.state.cohorts) for (const p of c.positions) (m[p.symbol] = m[p.symbol] || []).push({...p, opened: c.opened});
   return m;
 }
-const botPnl = p => { const q = PX[p.symbol]; return q ? (p.side === "LONG" ? 1 : -1) * (q.price / p.entry - 1) : null; };
+const botPnl = p => { const px = p.exit || (PX[p.symbol] || {}).price; return px ? (p.side === "LONG" ? 1 : -1) * (px / p.entry - 1) : null; };
 function renderLeft() {
   const el = $("#left"), keep = el.scrollTop;
   if (leftTab === "pos") {
@@ -588,9 +590,9 @@ function renderBottom() {
   } else if (botTab === "bpos") {
     const rows = [];
     if (B) for (const c of B.state.cohorts) for (const p of c.positions) rows.push({...p, opened: c.opened});
-    el.innerHTML = `<div class="toolbar muted">El bot opera siempre en paper. «Cerrar» saca esa posición antes de los 7 días (comisión, deslizamiento y funding incluidos).</div>` + (rows.length ? `<table><tr><th class="l">Cohorte</th><th class="l">Moneda</th><th class="l">Lado</th><th>Entrada</th><th>Precio vivo</th><th>PnL %</th><th>PnL USDT</th><th>Tamaño</th><th class="l"></th></tr>` +
-      rows.map(p => { const v = botPnl(p), q = PX[p.symbol]; return `<tr class="click" data-s="${p.symbol}"><td class="l">${p.opened}</td><td class="l"><b>${base(p.symbol)}</b></td><td class="l">${badge(p.side)}</td><td class="num">${fmtPx(p.entry)}</td><td class="num">${q ? fmtPx(q.price) : "–"}</td><td class="num ${cls(v)}">${pct(v)}</td><td class="num ${cls(v)}">${v == null ? "–" : usd(p.notional * v)}</td><td class="num">${p.notional.toFixed(2)}</td>
-        <td class="l"><button class="sm bcl" data-s="${p.symbol}" data-o="${p.opened}">Cerrar</button></td></tr>`; }).join("") + "</table>" : '<div class="empty">El bot no tiene posiciones abiertas. Pulsa «▶ Bot hoy».</div>');
+    el.innerHTML = `<div class="toolbar muted">El bot opera siempre en paper. Cada posición lleva un stop a ${CFG ? CFG.bot_sl_atr : 2}×ATR (revisado con velas de 1 h, sin take profit: el backtest mostró que el TP empeora). «Cerrar» la saca antes de los 7 días.</div>` + (rows.length ? `<table><tr><th class="l">Cohorte</th><th class="l">Moneda</th><th class="l">Lado</th><th>Entrada</th><th>Stop</th><th>Precio vivo</th><th>PnL %</th><th>PnL USDT</th><th>Tamaño</th><th class="l"></th></tr>` +
+      rows.map(p => { const v = botPnl(p), q = PX[p.symbol]; return `<tr class="click" data-s="${p.symbol}"><td class="l">${p.opened}</td><td class="l"><b>${base(p.symbol)}</b></td><td class="l">${badge(p.side)}</td><td class="num">${fmtPx(p.entry)}</td><td class="num" style="color:var(--red)">${p.sl ? fmtPx(p.sl) : "–"}</td><td class="num">${p.exit ? '<span class="badge b-short">STOP</span> ' + fmtPx(p.exit) : q ? fmtPx(q.price) : "–"}</td><td class="num ${cls(v)}">${pct(v)}</td><td class="num ${cls(v)}">${v == null ? "–" : usd(p.notional * v)}</td><td class="num">${p.notional.toFixed(2)}</td>
+        <td class="l">${p.exit ? '<span class="muted">cerrada por stop</span>' : `<button class="sm bcl" data-s="${p.symbol}" data-o="${p.opened}">Cerrar</button>`}</td></tr>`; }).join("") + "</table>" : '<div class="empty">El bot no tiene posiciones abiertas. Pulsa «▶ Bot hoy».</div>');
     el.querySelectorAll("button.bcl").forEach(b => b.onclick = async e => { e.stopPropagation(); if (!confirm(`¿Cerrar ya la posición del bot en ${base(b.dataset.s)}?`)) return;
       const r = await post("/api/close", {symbol: b.dataset.s, opened: b.dataset.o, source: "bot"}); toast(r.ok ? r.msg : r.error, r.ok ? "ok" : "err"); pollState(); });
   } else if (botTab === "beq") {
@@ -712,7 +714,7 @@ function setTab(group, t) { document.querySelectorAll(group + " button").forEach
 
 /* ---------------- configuración y reinicio ---------------- */
 const PCTK = ["taker", "maker", "slippage", "mmr"];
-const CK = ["exchange", "mode", "universe", "bot_variant", "bot_capital", "manual_capital", "taker", "maker", "slippage", "mmr", "default_leverage", "max_leverage", "max_position_usdt", "margin_mode"];
+const CK = ["exchange", "mode", "universe", "bot_variant", "bot_sl_atr", "bot_capital", "manual_capital", "taker", "maker", "slippage", "mmr", "default_leverage", "max_leverage", "max_position_usdt", "margin_mode"];
 async function openCfg() {
   const r = await api("/api/config"); $("#cfgdir").textContent = r.config_dir;
   for (const k of CK) { const i = $("#c-" + k); i.value = PCTK.includes(k) ? +(r.cfg[k] * 100).toFixed(4) : r.cfg[k]; }

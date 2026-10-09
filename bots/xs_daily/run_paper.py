@@ -26,6 +26,9 @@ import universo  # noqa: E402
 import xs_core  # noqa: E402
 
 FEE, SLIP = 0.0005, 0.0002
+STOP_SLIP = 0.0010                    # deslizamiento extra al ejecutarse un stop (igual que en el backtest)
+SL_ATR = 2.0                          # stop loss = entrada ∓ SL_ATR × ATR(14)% (0 = sin stop). Ver backtesting/xs_stops.py
+HOUR = 3_600_000
 STRATEGY_NAME = "modelo:xs_v2_alpha158_rank_7d"
 DAY = 86_400_000
 
@@ -66,7 +69,47 @@ def load_state(path, capital):
     return {"equity": capital, "cohorts": [], "closed": []}
 
 
+def atr14(df):
+    """ATR de 14 días en % del precio, con las velas diarias cerradas hasta la señal."""
+    h, l, c = df["high"], df["low"], df["close"]
+    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
+    v = tr.rolling(14, min_periods=14).mean().iloc[-1] / c.iloc[-1]
+    return float(v) if pd.notna(v) else None
+
+
+def check_stops(state, ex, log=print):
+    """Revisa con velas de 1 h si alguna posición tocó su stop desde la última revisión. Si lo tocó, queda cerrada
+    a ese precio (o al open si abrió más allá: hueco) con deslizamiento de stop; se realiza al cerrar la cohorte."""
+    hits = 0
+    for c in state["cohorts"]:
+        t0 = c.get("opened_ts") or int(pd.Timestamp(c["opened"], tz="UTC").value // 10**6)
+        for p in c["positions"]:
+            if not p.get("sl") or p.get("exit"):
+                continue
+            since = p.get("checked_ts", t0)
+            try:
+                rows = ex.fetch_ohlcv(p["symbol"], "1h", since=since - since % HOUR, limit=500)
+            except Exception:
+                continue
+            long = p["side"] == "LONG"
+            for ts, o, hi, lo, cl, v in rows:
+                if ts + HOUR <= since:                      # vela anterior a la entrada / a la última revisión
+                    continue
+                if (long and lo <= p["sl"]) or (not long and hi >= p["sl"]):
+                    base_px = min(o, p["sl"]) if long else max(o, p["sl"])
+                    p["exit"] = base_px * (1 - STOP_SLIP) if long else base_px * (1 + STOP_SLIP)
+                    p["exit_ts"], p["exit_reason"] = int(ts), "stop loss"
+                    hits += 1
+                    log(f"  STOP {p['side']} {p['symbol'].split('/')[0]} (cohorte {c['opened']}): salida {p['exit']:.6g} "
+                        f"({(1 if long else -1) * (p['exit'] / p['entry'] - 1):+.2%})")
+                    break
+            if rows and not p.get("exit"):
+                p["checked_ts"] = int(rows[-1][0])
+    return hits
+
+
 def step(state, ex, bundle, today, log=print, derivs=None):
+    check_stops(state, ex, log)
     realized = 0.0
     keep = []
     for c in state["cohorts"]:
@@ -77,17 +120,19 @@ def step(state, ex, bundle, today, log=print, derivs=None):
         pnl, fund, fund_ok = 0.0, 0.0, True
         t_open = int(pd.Timestamp(c["opened"], tz="UTC").value // 10**6)
         for p in c["positions"]:
-            px = exec_price(ex, p["symbol"], p["side"], opening=False) or p["entry"]
+            px = p.get("exit") or exec_price(ex, p["symbol"], p["side"], opening=False) or p["entry"]   # si tocó el stop, sale a ese precio
             sgn = 1 if p["side"] == "LONG" else -1
             pnl += p["notional"] * sgn * (px / p["entry"] - 1) - p["notional"] * FEE
-            if hasattr(ex, "fetch_funding_rate_history"):       # funding pagado/cobrado durante los 7 días
-                f, ok = funding_util.funding_cost(ex, p["symbol"], p["side"], p["notional"], t_open, int(pd.Timestamp(today, tz="UTC").value // 10**6))
+            if hasattr(ex, "fetch_funding_rate_history"):       # funding pagado/cobrado mientras la posición estuvo abierta
+                until = p.get("exit_ts") or int(pd.Timestamp(today, tz="UTC").value // 10**6)
+                f, ok = funding_util.funding_cost(ex, p["symbol"], p["side"], p["notional"], t_open, until)
                 fund += f
                 fund_ok &= ok
         pnl -= fund
         realized += pnl
         state["closed"].append({"opened": c["opened"], "closed": today, "pnl": pnl, "capital": c["capital"],
-                                "ret": pnl / c["capital"] if c["capital"] else 0.0, "funding": fund, "funding_ok": fund_ok})
+                                "ret": pnl / c["capital"] if c["capital"] else 0.0, "funding": fund, "funding_ok": fund_ok,
+                                "stops": sum(1 for p in c["positions"] if p.get("exit"))})
         log(f"  cohorte del {c['opened']} cerrada: PnL {pnl:+.2f} ({pnl / c['capital']:+.2%}) | funding {-fund:+.2f}"
             + ("" if fund_ok else " (sin datos de funding para algún símbolo)"))
     state["cohorts"] = keep
@@ -108,11 +153,16 @@ def step(state, ex, bundle, today, log=print, derivs=None):
             px = exec_price(ex, s, side, opening=True)
             if px is None:
                 continue
-            positions.append({"symbol": s, "side": side, "entry": px, "notional": notional, "fee": notional * FEE})
+            pos = {"symbol": s, "side": side, "entry": px, "notional": notional, "fee": notional * FEE}
+            a = atr14(hist[s]) if (SL_ATR and s in hist) else None
+            if a:
+                pos["atr"] = a
+                pos["sl"] = px * (1 - SL_ATR * a) if side == "LONG" else px * (1 + SL_ATR * a)
+            positions.append(pos)
             state["equity"] -= notional * FEE
     state["cohorts"].append({"opened": today, "opened_ts": int(ex.milliseconds()), "signal_date": str(date.date()), "capital": cap,
                              "positions": positions})   # opened_ts = momento real de la entrada (para marcarla en el gráfico)
-    log(f"  cohorte abierta ({len(positions)} posiciones, {notional:.2f} c/u): LONG {', '.join(s.split('/')[0] for s in longs)} | "
+    log(f"  cohorte abierta ({len(positions)} posiciones, {notional:.2f} c/u, stop {SL_ATR:g}×ATR" + (")" if SL_ATR else " = sin stop)") + f": LONG {', '.join(s.split('/')[0] for s in longs)} | "
         f"SHORT {', '.join(s.split('/')[0] for s in shorts)}")
     return realized
 
@@ -121,7 +171,7 @@ def unrealized(state, ex):
     u = 0.0
     for c in state["cohorts"]:
         for p in c["positions"]:
-            px = exec_price(ex, p["symbol"], p["side"], opening=False)
+            px = p.get("exit") or exec_price(ex, p["symbol"], p["side"], opening=False)
             if px:
                 u += p["notional"] * (1 if p["side"] == "LONG" else -1) * (px / p["entry"] - 1)
     return u
@@ -136,7 +186,7 @@ def paths(variant):
 
 
 def main():
-    global FEE, SLIP
+    global FEE, SLIP, SL_ATR
     import ccxt
     ap = argparse.ArgumentParser()
     ap.add_argument("--exchange", default="binanceusdm")
@@ -148,6 +198,7 @@ def main():
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--universe", default="both", choices=["crypto", "stocks", "both"], help="qué opera el bot: cripto, acciones tokenizadas o ambos")
     ap.add_argument("--fee", type=float, default=FEE, help="comisión taker por lado")
+    ap.add_argument("--sl-atr", type=float, default=SL_ATR, help="stop loss en múltiplos de ATR(14) (0 = sin stop)")
     ap.add_argument("--slip", type=float, default=SLIP, help="deslizamiento por lado")
     a = ap.parse_args()
     sel_path = os.path.join(xs_core.ROOT, "strategy_selection.json")
@@ -170,7 +221,7 @@ def main():
                 sys.exit(f"Sin conexión con {a.exchange} tras 6 intentos ({type(e).__name__}). Revisa internet/VPN/DNS y vuelve a ejecutar.")
             print(f"  sin conexión ({type(e).__name__}), reintento {k + 1}/5 en {5 * (k + 1)} s ...", flush=True)
             time.sleep(5 * (k + 1))
-    FEE, SLIP = a.fee, a.slip
+    FEE, SLIP, SL_ATR = a.fee, a.slip, a.sl_atr
     bundle["symbols"] = universo.filter_symbols([s for s in bundle["symbols"] if s in ex.markets], a.universe, ex.markets)
     print(f"universo: {a.universe} -> {len(bundle['symbols'])} símbolos | comisión {FEE:.4%} | deslizamiento {SLIP:.4%}")
     state = load_state(a.state, a.capital)

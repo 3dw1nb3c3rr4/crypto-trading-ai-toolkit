@@ -28,8 +28,13 @@ class FakeExchange:
     def milliseconds(self):
         return self.now + 3600_000
 
-    def fetch_ohlcv(self, s, tf, limit=150):
-        df = self.uni[s]; d = df[df.ms < self.now].tail(limit)
+    def fetch_ohlcv(self, s, tf, since=None, limit=150):
+        df = self.uni[s]
+        if tf == "1h":                                       # para los stops: velas DIARIAS ya cerradas, fechadas en su última hora
+            d = df[(df.ms + DAY <= self.now) & (df.ms + DAY > (since or 0))].head(limit)
+            rows = d[["ms", "open", "high", "low", "close", "volume"]].values.tolist()
+            return [[r[0] + DAY - 3600_000] + r[1:] for r in rows]
+        d = df[df.ms < self.now].tail(limit)
         return d[["ms", "open", "high", "low", "close", "volume"]].values.tolist()
 
     def fetch_ticker(self, s):
@@ -47,6 +52,7 @@ if __name__ == "__main__":
     ap.add_argument("--save", default=None, help="CSV con las cohortes cerradas")
     ap.add_argument("--variant", default="D", choices=("D", "FO"))
     ap.add_argument("--derivs", nargs="+", default=None, help="historial de funding/OI para FO")
+    ap.add_argument("--sl-atr", type=float, default=rp.SL_ATR, help="stop en múltiplos de ATR (0 = sin stop)")
     a = ap.parse_args()
     uni = load_universe(a.data, min_bars=150)
     train_uni = {s: df[df.ts < a.start].reset_index(drop=True) for s, df in uni.items()}
@@ -57,6 +63,7 @@ if __name__ == "__main__":
         print(f"derivados: funding {len(derivs[0])} símbolos, OI {len(derivs[1])}")
     bundle = xs_core.train({s: d for s, d in train_uni.items() if len(d) >= 150}, a.variant, derivs)
     print(f"modelo entrenado hasta {bundle['trained_until']} con {bundle['n_rows']} filas (sin ver nada desde {a.start})")
+    rp.SL_ATR = a.sl_atr
     ex = FakeExchange(uni)
     days = pd.date_range(pd.Timestamp(a.start, tz="UTC"), max(df.ts.iloc[-1] for df in uni.values()), freq="D")
     state = {"equity": 1000.0, "cohorts": [], "closed": []}
@@ -75,12 +82,14 @@ if __name__ == "__main__":
             for p in coh["positions"]:
                 t = ex.fetch_ticker(p["symbol"]) if not ex.uni[p["symbol"]][ex.uni[p["symbol"]].ms == ex.now].empty else None
                 px = (t["bid"] * (1 - rp.SLIP) if p["side"] == "LONG" else t["ask"] * (1 + rp.SLIP)) if t else p["entry"]
+                px = p.get("exit") or px
                 sgn = 1 if p["side"] == "LONG" else -1
                 exp += p["notional"] * sgn * (px / p["entry"] - 1) - p["notional"] * rp.FEE
             if age != bundle["H"] or abs(exp - c["pnl"]) > 1e-9:
                 errors += 1
     cl = pd.DataFrame(state["closed"])
-    print(f"días simulados={len(days)} | cohortes cerradas={len(cl)} | errores de contabilidad/edad={errors}")
+    print(f"días simulados={len(days)} | cohortes cerradas={len(cl)} | errores de contabilidad/edad={errors} | stop {rp.SL_ATR:g}×ATR: "
+          f"{int(cl['stops'].sum()) if 'stops' in cl else 0} posiciones cerradas por stop | peor cohorte {cl['ret'].min():+.2%}")
     if a.save:
         cl.to_csv(a.save, index=False)
     r = cl["ret"].to_numpy()

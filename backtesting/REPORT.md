@@ -304,3 +304,17 @@ Misma prueba que la sección 14 (105 símbolos en el panel, 1725 cohortes de 7 d
 | FO (+ ambos) | +0.446 % | [-0.126 %, +0.992 %] | 0.50 | -44 % | +0.155 % | [-0.039 %, +0.339 %] |
 
 Lectura: el OI (y más aún funding + OI) empuja en la dirección correcta y de forma bastante consistente (FO mejora 2023 de -0.39 % a -0.07 % y 2026 de +0.11 % a +0.60 %), pero **ninguna mejora es estadísticamente significativa** y ninguna variante tiene IC95 % por encima de cero. Además se probaron 3 variantes, lo que debilita aún más la evidencia (Sharpe deflactado con N=700: 0.43). Conclusión: candidato a seguir midiendo, no aprobado.
+
+## 17. TP / SL según la volatilidad (ATR de 14 días) en el bot cross-sectional
+
+`backtesting/xs_stops.py` (variante E, 1725 cohortes de 7 d desde 2022, mismas predicciones walk-forward; recorrido día a día con máximo/mínimo, SL primero si un día toca ambos, salida al open si hay hueco, deslizamiento extra de 0.10 % en el stop). Se probaron 24 combinaciones de SL ∈ {1.5, 2, 3, 4}×ATR y TP ∈ {2, 3, 4, 6}×ATR.
+
+| | media/cohorte | peor cohorte | máx. caída | Sharpe |
+|---|---|---|---|---|
+| sin TP/SL | +0.26 % | -52.4 % | -41.7 % | 0.29 |
+| SL 2×ATR, sin TP | +0.37 % | -15.3 % | -21.2 % | 0.50 |
+| SL 3×ATR, sin TP | +0.31 % | -16.0 % | -24.0 % | 0.42 |
+
+- **El TP empeora siempre** (corta a las ganadoras, que son las que pagan a las perdedoras): no se usa.
+- **El SL reduce mucho el riesgo de cola** (squeezes de los cortos): la peor cohorte pasa de -52 % a -15 % y la caída máxima se reduce a la mitad. La mejora de la media (+0.11 % pareado, IC95 % [-0.23 %, +0.50 %]) no es significativa y fue negativa en la segunda mitad del periodo: se adopta como protección, no como fuente de ganancia.
+- El bot usa SL = 2×ATR(14) por defecto (configurable), revisado con velas de 1 h.
